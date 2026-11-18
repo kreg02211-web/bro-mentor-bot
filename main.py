@@ -53,6 +53,7 @@ async def chat_with_ai(message: Message):
                 {"role": "user", "content": message.text},
             ],
             temperature=0.7,
+            max_tokens=600,
         )
         await message.answer(response.choices[0].message.content)
     except Exception as e:
