@@ -44,25 +44,31 @@ def get_history(user_id):
     try:
         raw_data = redis.get(f"chat_memory_{user_id}")
         if raw_data:
+            # Если Upstash вернул строку, парсим в json
             if isinstance(raw_data, str):
                 history = json.loads(raw_data)
             else:
                 history = raw_data
             
+            # Двойная страховка на случай вложенных строк
             if isinstance(history, str):
                 history = json.loads(history)
                 
-            if isinstance(history, list):
-                # Очищаем историю от любых системных артефактов на всякий случай
-                clean_history = [msg for msg in history if msg.get("role") in ["user", "assistant"]]
-                return clean_history
+            if isinstance(history, list) and len(history) > 0:
+                print(f"✅ ПАМЯТЬ ЗАГРУЖЕНА: для {user_id}, сообщений -> {len(history)}")
+                return history
     except Exception as e:
         print(f"❌ Ошибка чтения памяти: {e}")
+    
+    print(f"⚠️ Память для {user_id} пуста, начинаем с чистого листа.")
     return []
 
 def save_history(user_id, history):
     try:
-        redis.set(f"chat_memory_{user_id}", json.dumps(history, ensure_ascii=False))
+        clean_history = [msg for msg in history if isinstance(msg, dict) and "role" in msg and "content" in msg]
+        payload = json.dumps(clean_history, ensure_ascii=False)
+        redis.set(f"chat_memory_{user_id}", payload)
+        print(f"💾 ПАМЯТЬ СОХРАНЕНА: для {user_id}, всего сообщений -> {len(clean_history)}")
     except Exception as e:
         print(f"❌ Ошибка записи памяти: {e}")
 
