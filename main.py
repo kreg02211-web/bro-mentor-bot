@@ -110,7 +110,7 @@ async def chat_with_ai(message: Message):
             model=ACTIVE_MODEL,
             messages=messages_payload,
             temperature=0.5,
-            max_tokens=250
+            max_tokens=500
         )
         reply = response.choices[0].message.content
         
