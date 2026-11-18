@@ -37,10 +37,11 @@ def get_working_model():
     models = groq_client.models.list().data
     for m in models:
         mid = m.id.lower()
-        if "whisper" not in mid and "guard" not in mid and "tts" not in mid:
+        if "whisper" not in mid and "guard" not in mid and "tts" not in mid and "orpheus" not in mid:
             return m.id
     return models[0].id
-ACTIVE_MODEL = "llama-3.3-70b-versatile"
+
+ACTIVE_MODEL = get_working_model()
 print(f"Подключена рабочая модель: {ACTIVE_MODEL}")
 @dp.message(F.text)
 async def chat_with_ai(message: Message):
