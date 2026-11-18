@@ -24,6 +24,7 @@ GROQ_API_KEY = "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"
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 groq_client = Groq(api_key=GROQ_API_KEY)
+
 SYSTEM_PROMPT = (
     "Ты — понимающий старший товарищ. Общаешься с человеком на равных, мягко, тепло и по-братски. "
     "Пиши нормальными, аккуратными абзацами. Никаких лекций, нравоучений, душноты, списков и огромных простыней текста. "
