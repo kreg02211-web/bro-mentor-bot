@@ -1,8 +1,28 @@
 import os
 import asyncio
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message
 from groq import Groq
+
+# Заглушка порта для Render
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/html")
+        self.end_headers()
+        self.wfile.write(b"Bot is alive!")
+    
+    def log_message(self, format, *args):
+        pass
+
+def run_server():
+    server = HTTPServer(("0.0.0.0", 10000), SimpleHandler)
+    server.serve_forever()
+
+# Запускаем веб-сервер в фоне, чтобы Render не ругался
+threading.Thread(target=run_server, daemon=True).start()
 
 TOKEN = "9161797826:AAEQJry988MuMb1nf39rLb3oYqsMCIH_vm0"
 GROQ_API_KEY = "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"
@@ -51,7 +71,7 @@ async def chat_with_ai(message: Message):
         await message.answer(f"Ошибка: {e}")
 
 async def main():
-    print("Бот запущен и готов к работе без лишней духоты!")
+    print("Бот запущен и пашет на все сто!")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
