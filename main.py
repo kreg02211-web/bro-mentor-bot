@@ -4,8 +4,8 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message
 from groq import Groq
 
-"BOT_TOKEN=9161797826:AAEQJry988MuMb1nf39rLb3oYqsMCIH_vm0"
-"GROQ_API_KEY=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"
+TOKEN = "9161797826:AAEQJry988MuMb1nf39rLb3oYqsMCIH_vm0"
+GROQ_API_KEY = "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"
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
@@ -31,7 +31,7 @@ print(f"Подключена рабочая модель: {ACTIVE_MODEL}")
 
 @dp.message(F.text == "/start")
 async def cmd_start(message: Message):
-    await message.answer("Здарова! 🤝 На связи. Че как, рассказывай, какие мысли?")
+    await message.answer("Здорова! ❤️ На связи. Че как, рассказывай, какие мысли?")
 
 @dp.message(F.text)
 async def chat_with_ai(message: Message):
@@ -49,6 +49,7 @@ async def chat_with_ai(message: Message):
         await message.answer(response.choices[0].message.content)
     except Exception as e:
         await message.answer(f"Ошибка: {e}")
+
 async def main():
     print("Бот запущен и готов к работе без лишней духоты!")
     await bot.delete_webhook(drop_pending_updates=True)
