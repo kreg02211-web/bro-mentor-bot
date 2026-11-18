@@ -47,11 +47,11 @@ def get_history(user_id):
             data = json.loads(resp.read().decode())
             if data.get("result"):
                 history = json.loads(data["result"])
-                print(f"Загружена память для {user_id}: сообщений -> {len(history)}")
+                print(f"✅ УСПЕХ: Загружена память для {user_id}, сообщений: {len(history)}")
                 return history
     except Exception as e:
-        print(f"Ошибка чтения памяти: {e}")
-    print(f"Память для {user_id} пуста или не найдена.")
+        print(f"❌ Ошибка чтения памяти: {e}")
+    print(f"⚠️ Память для {user_id} пуста или не найдена, создаем чистую.")
     return []
 
 def save_history(user_id, history):
@@ -64,9 +64,9 @@ def save_history(user_id, history):
             method="POST"
         )
         urllib.request.urlopen(req, timeout=5)
-        print(f"Сохранено сообщений в память для {user_id}: {len(history)}")
+        print(f"💾 УСПЕХ: Сохранено сообщений в память для {user_id}: {len(history)}")
     except Exception as e:
-        print(f"Ошибка записи памяти: {e}")
+        print(f"❌ Ошибка записи памяти: {e}")
 
 SYSTEM_PROMPT = (
     "Ты — Гаутер, старший кореш и бро Торфина. Живой пацан, без шизы, ботов и ролевых игр. "
@@ -84,7 +84,8 @@ def get_working_model():
             return m.id
     return models[0].id
 
-ACTIVE_MODEL = get_working_model()
+ACTIVE_ACTIVE_MODEL = get_working_model()
+ACTIVE_MODEL = ACTIVE_ACTIVE_MODEL
 print(f"Подключена рабочая модель: {ACTIVE_MODEL}")
 
 @dp.message(F.text == "/start")
@@ -111,8 +112,8 @@ async def chat_with_ai(message: Message):
         response = groq_client.chat.completions.create(
             model=ACTIVE_MODEL,
             messages=messages_payload,
-            temperature=0.7,
-            max_tokens=500
+            temperature=0.75,
+            max_tokens=650
         )
         reply = response.choices[0].message.content
         
@@ -125,7 +126,7 @@ async def chat_with_ai(message: Message):
         await message.answer(f"Ошибка: {e}")
 
 async def main():
-    print("Бот запущен: абзацы и эмодзи на месте!")
+    print("Бот запущен: облако и объем на месте!")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
