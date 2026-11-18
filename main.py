@@ -40,7 +40,7 @@ MAX_HISTORY = 15
 def get_history(user_id):
     try:
         req = urllib.request.Request(
-            f"{UPSTASH_URL}/get/chat_v4_{user_id}",
+            f"{UPSTASH_URL}/get/chat_v5_{user_id}",
             headers={"Authorization": f"Bearer {UPSTASH_TOKEN}"}
         )
         with urllib.request.urlopen(req, timeout=5) as resp:
@@ -55,7 +55,7 @@ def save_history(user_id, history):
     try:
         payload = json.dumps(history, ensure_ascii=False).encode("utf-8")
         req = urllib.request.Request(
-            f"{UPSTASH_URL}/set/chat_v4_{user_id}",
+            f"{UPSTASH_URL}/set/chat_v5_{user_id}",
             data=payload,
             headers={"Authorization": f"Bearer {UPSTASH_TOKEN}"},
             method="POST"
@@ -65,11 +65,11 @@ def save_history(user_id, history):
         print(f"Ошибка записи памяти: {e}")
 
 SYSTEM_PROMPT = (
-    "Ты — Гаутер, старший кореш и бро для Торфина. Вы живые пацаны, у вас братская связь. "
-    "НИКОГДА не говори, что ты искусственный интеллект, программа, бот или нейросеть. Ты — реальный кореш. "
-    "ЖЕСТКОЕ ПРАВИЛО КОРЕШКА: Пиши коротко и емко, как в живой переписке. Никаких гигантских простыней, лекций, поучений и воды. "
-    "Общий ответ — максимум 3-4 предложения в один-два абзаца. Выразил респект, подкинул мысль или совет — и всё, без лишнего пиздежа. "
-    "Никаких списков, цифр, звездочек и решеток. Добавляй 1-2 живых эмодзи к месту."
+    "Ты — обычный пацан, живой человек, старший друг и кореш Торфина. "
+    "НИКАКИХ ролевых игр, сказок, батальонов, сценариев и бреда про то, что ты кого-то 'отыгрываешь'. "
+    "Ты общаешься с другом в телеге. Говори простым, нормальным человеческим языком, без заумной душноты, канцелярита и психоделии. "
+    "Не путай, кто что написал: Торфин — это твой кореш, который качается в зале, пилит ботов и делится личным. Ты — Гаутер, который отвечает ему по делу. "
+    "Отвечай емко (2-3 предложения), по-пацански, в тему сообщения. Никаких гигантских простыней, списков, звездочек и решеток. Добавь 1 эмодзи к месту."
 )
 
 def get_working_model():
@@ -87,14 +87,13 @@ print(f"Подключена рабочая модель: {ACTIVE_MODEL}")
 async def cmd_start(message: Message):
     save_history(message.from_user.id, [])
     await message.answer(
-        "На эту кнопку редко жмут от хорошей жизни, Торфин… 🌑\n\n"
-        "Чего привело? Рассказывай, разберемся по-братски."
+        "Здарова, Торфин. Чего как? Рассказывай, что поменялось."
     )
 
 @dp.message(F.text == "/reset")
 async def cmd_reset(message: Message):
     save_history(message.from_user.id, [])
-    await message.answer("Память сброшена. Начинаем заново, бро. 🌑")
+    await message.answer("Память обнулена. На связи, бро. 👊")
 
 @dp.message(F.text)
 async def chat_with_ai(message: Message):
@@ -110,8 +109,8 @@ async def chat_with_ai(message: Message):
         response = groq_client.chat.completions.create(
             model=ACTIVE_MODEL,
             messages=messages_payload,
-            temperature=0.6,
-            max_tokens=300
+            temperature=0.5,
+            max_tokens=250
         )
         reply = response.choices[0].message.content
         
@@ -124,7 +123,7 @@ async def chat_with_ai(message: Message):
         await message.answer(f"Ошибка: {e}")
 
 async def main():
-    print("Бот запущен: простыни обрублены до нормы!")
+    print("Бот запущен: шиза и ролевые игры вырезаны под корень!")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
