@@ -35,38 +35,42 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher()
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-MAX_HISTORY = 12
+MAX_HISTORY = 14
 
 def get_history(user_id):
     try:
         req = urllib.request.Request(
-            f"{UPSTASH_URL}/get/chat_v9_{user_id}",
+            f"{UPSTASH_URL}/get/chat_memory_{user_id}",
             headers={"Authorization": f"Bearer {UPSTASH_TOKEN}"}
         )
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read().decode())
             if data.get("result"):
-                return json.loads(data["result"])
+                history = json.loads(data["result"])
+                print(f"Загружена память для {user_id}: сообщений -> {len(history)}")
+                return history
     except Exception as e:
         print(f"Ошибка чтения памяти: {e}")
+    print(f"Память для {user_id} пуста или не найдена.")
     return []
 
 def save_history(user_id, history):
     try:
         payload = json.dumps(history, ensure_ascii=False).encode("utf-8")
         req = urllib.request.Request(
-            f"{UPSTASH_URL}/set/chat_v9_{user_id}",
+            f"{UPSTASH_URL}/set/chat_memory_{user_id}",
             data=payload,
             headers={"Authorization": f"Bearer {UPSTASH_TOKEN}"},
             method="POST"
         )
         urllib.request.urlopen(req, timeout=5)
+        print(f"Сохранено сообщений в память для {user_id}: {len(history)}")
     except Exception as e:
         print(f"Ошибка записи памяти: {e}")
 
 SYSTEM_PROMPT = (
     "Ты — Гаутер, старший кореш и бро Торфина. Живой пацан, без шизы, ботов и ролевых игр. "
-    "ОБЩЕНИЕ КАК НАДО: Пиши развернуто, объемно и сочно, в стиле живого разговора двух корешей (примерно 10-15 предложений или хороший плотный абзац с рассуждениями). "
+    "ОБЩЕНИЕ КАК НАДО: Пиши развернуто, объемно и сочно, в стиле живого разговора двух корешей (хороший плотный абзац с рассуждениями). "
     "Никаких сухих отписок и телеграфных обрубков. Если друг скинул тему — разбери её подробно, подкинь мыслей, рассуждай вместе с ним, делись мнением, поддерживай или спорь, как положено реальному другу. "
     "Никаких списков, лекций, звездочек и решеток. Добавь живых эмодзи к месту, чтобы текст дышал."
 )
@@ -99,15 +103,15 @@ async def chat_with_ai(message: Message):
 
     history.append({"role": "user", "content": message.text})
     history = history[-MAX_HISTORY:]
-
     await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
     try:
         messages_payload = [{"role": "system", "content": SYSTEM_PROMPT}] + history
+        
         response = groq_client.chat.completions.create(
             model=ACTIVE_MODEL,
             messages=messages_payload,
             temperature=0.7,
-            max_tokens=500  # Даем больше простора, чтобы расписывал нормально
+            max_tokens=500
         )
         reply = response.choices[0].message.content
         
@@ -120,9 +124,10 @@ async def chat_with_ai(message: Message):
         await message.answer(f"Ошибка: {e}")
 
 async def main():
-    print("Бот запущен: объем ответов увеличен, теперь пишем развернуто!")
+    print("Бот запущен: постоянная память зафиксирована!")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
+    
