@@ -42,7 +42,7 @@ async def chat_with_ai(message: Message):
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": message.text},
-            ],
+            ]
             temperature=0.7,
             max_tokens=600,
         )
