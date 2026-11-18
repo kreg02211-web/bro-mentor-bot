@@ -42,14 +42,13 @@ async def chat_with_ai(message: Message):
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": message.text}
-            ]
+            ],
             temperature=0.7,
             max_tokens=600
         )
         await message.answer(response.choices[0].message.content)
     except Exception as e:
         await message.answer(f"Ошибка: {e}")
-
 async def main():
     print("Бот запущен и готов к работе без лишней духоты!")
     await bot.delete_webhook(drop_pending_updates=True)
