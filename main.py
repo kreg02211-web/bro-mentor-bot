@@ -2,11 +2,11 @@ import os
 import json
 import asyncio
 import threading
-import urllib.request
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message
 from groq import Groq
+from upstash_redis import Redis
 
 # Заглушка порта для Render
 class SimpleHandler(BaseHTTPRequestHandler):
@@ -28,8 +28,11 @@ threading.Thread(target=run_server, daemon=True).start()
 TOKEN = "9161797826:AAEQJry988MuMb1nf39rLb3oYqsMCIH_vm0"
 GROQ_API_KEY = "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"
 
-UPSTASH_URL = "https://funky-manatee-107338.upstash.io"
-UPSTASH_TOKEN = "gQAAAAAAAnKAAIgCDI5NJA3YjUwYmE3NDQ0NDcgODUyYjUzRmZja044"
+# Подключаем официальный клиент Upstash для Python
+redis = Redis(
+    url="https://funky-manatee-107338.upstash.io",
+    token="gQAAAAAAAnKAAIgCDI5NJA3YjUwYmE3NDQ0NDcgODUyYjUzRmZja044"
+)
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
@@ -39,34 +42,29 @@ MAX_HISTORY = 14
 
 def get_history(user_id):
     try:
-        req = urllib.request.Request(
-            f"{UPSTASH_URL}/get/chat_memory_{user_id}",
-            headers={"Authorization": f"Bearer {UPSTASH_TOKEN}"}
-        )
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.loads(resp.read().decode())
-            if data.get("result"):
-                history = json.loads(data["result"])
-                print(f"✅ УСПЕХ: Загружена память для {user_id}, сообщений: {len(history)}")
-                return history
+        raw_data = redis.get(f"chat_memory_{user_id}")
+        if raw_data:
+            if isinstance(raw_data, str):
+                history = json.loads(raw_data)
+            else:
+                history = raw_data
+            
+            if isinstance(history, str):
+                history = json.loads(history)
+                
+            print(f"✅ УСПЕХ: Загружена память для {user_id}, сообщений: {len(history)}")
+            return history
     except Exception as e:
-        print(f"❌ Ошибка чтения памяти: {e}")
+        print(f"❌ Ошибка чтения памяти через SDK: {e}")
     print(f"⚠️ Память для {user_id} пуста или не найдена, создаем чистую.")
     return []
 
 def save_history(user_id, history):
     try:
-        payload = json.dumps(history, ensure_ascii=False).encode("utf-8")
-        req = urllib.request.Request(
-            f"{UPSTASH_URL}/set/chat_memory_{user_id}",
-            data=payload,
-            headers={"Authorization": f"Bearer {UPSTASH_TOKEN}"},
-            method="POST"
-        )
-        urllib.request.urlopen(req, timeout=5)
+        redis.set(f"chat_memory_{user_id}", json.dumps(history, ensure_ascii=False))
         print(f"💾 УСПЕХ: Сохранено сообщений в память для {user_id}: {len(history)}")
     except Exception as e:
-        print(f"❌ Ошибка записи памяти: {e}")
+        print(f"❌ Ошибка записи памяти через SDK: {e}")
 
 SYSTEM_PROMPT = (
     "Ты — Гаутер, старший кореш и бро Торфина. Живой пацан, без шизы, ботов и ролевых игр. "
@@ -84,14 +82,13 @@ def get_working_model():
             return m.id
     return models[0].id
 
-ACTIVE_ACTIVE_MODEL = get_working_model()
-ACTIVE_MODEL = ACTIVE_ACTIVE_MODEL
+ACTIVE_MODEL = get_working_model()
 print(f"Подключена рабочая модель: {ACTIVE_MODEL}")
 
 @dp.message(F.text == "/start")
 async def cmd_start(message: Message):
     save_history(message.from_user.id, [])
-    await message.answer("Здорова❤️ На связи, бро. 🚀 Че как, рассказывай подробно, какие мысли в голове крутятся, давай перетрем за жизнь и планы. 🔥")
+    await message.answer("Здорова! ❤️ На связи, бро. 🚀 Че как, рассказывай подробно, какие мысли в голове крутятся, давай перетрем за жизнь и планы. 🔥")
 
 @dp.message(F.text == "/reset")
 async def cmd_reset(message: Message):
@@ -105,6 +102,7 @@ async def chat_with_ai(message: Message):
 
     history.append({"role": "user", "content": message.text})
     history = history[-MAX_HISTORY:]
+
     await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
     try:
         messages_payload = [{"role": "system", "content": SYSTEM_PROMPT}] + history
@@ -126,10 +124,9 @@ async def chat_with_ai(message: Message):
         await message.answer(f"Ошибка: {e}")
 
 async def main():
-    print("Бот запущен: облако и объем на месте!")
+    print("Бот запущен с официальным SDK Upstash и идеальной памятью!")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
-    
