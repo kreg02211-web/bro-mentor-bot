@@ -28,7 +28,7 @@ threading.Thread(target=run_server, daemon=True).start()
 TOKEN = "9161797826:AAEQJry988MuMb1nf39rLb3oYqsMCIH_vm0"
 GROQ_API_KEY = "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"
 
-# Подключаем Redis строго по тем ключам, которые видны на твоем скриншоте Upstash для базы bro-bot
+# Подключаем официальный клиент Upstash для Python
 redis = Redis(
     url="https://funky-manatee-107338.upstash.io",
     token="gQAAAAAAAnKAAIgCDI5NJA3YjUwYmE3NDQ0NDcgODUyYjUzRmZja044"
@@ -104,11 +104,11 @@ async def cmd_start(message: Message):
 async def cmd_reset(message: Message):
     save_history(message.from_user.id, [])
     await message.answer("Память обнулена. На связи, бро. 🌑")
-    @dp.message(F.text)
+
+@dp.message(F.text)
 async def chat_with_ai(message: Message):
     user_id = message.from_user.id
     history = get_history(user_id)
-
     history.append({"role": "user", "content": message.text})
     history = history[-MAX_HISTORY:]
 
@@ -133,10 +133,9 @@ async def chat_with_ai(message: Message):
         await message.answer(f"Ошибка: {e}")
 
 async def main():
-    print("Бот запущен с базой bro-bot: стиль на месте, дебаг памяти активен!")
+    print("Бот запущен с базой bro-bot: отступы в норме, погнали!")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
-    
