@@ -91,7 +91,7 @@ print(f"Подключена рабочая модель: {ACTIVE_MODEL}")
 @dp.message(F.text == "/start")
 async def cmd_start(message: Message):
     save_history(message.from_user.id, [])
-    await message.answer("Здорова, Торфин! ❤️ На связи, бро. 🚀 Че как, рассказывай подробно, какие мысли в голове крутятся, давай перетрем за жизнь и планы. 🔥")
+    await message.answer("Здорова❤️ На связи, бро. 🚀 Че как, рассказывай подробно, какие мысли в голове крутятся, давай перетрем за жизнь и планы. 🔥")
 
 @dp.message(F.text == "/reset")
 async def cmd_reset(message: Message):
