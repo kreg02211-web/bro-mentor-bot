@@ -40,7 +40,7 @@ MAX_HISTORY = 20
 def get_history(user_id):
     try:
         req = urllib.request.Request(
-            f"{UPSTASH_URL}/get/chat_v2_{user_id}",
+            f"{UPSTASH_URL}/get/chat_v3_{user_id}",
             headers={"Authorization": f"Bearer {UPSTASH_TOKEN}"}
         )
         with urllib.request.urlopen(req, timeout=5) as resp:
@@ -55,7 +55,7 @@ def save_history(user_id, history):
     try:
         payload = json.dumps(history, ensure_ascii=False).encode("utf-8")
         req = urllib.request.Request(
-            f"{UPSTASH_URL}/set/chat_v2_{user_id}",
+            f"{UPSTASH_URL}/set/chat_v3_{user_id}",
             data=payload,
             headers={"Authorization": f"Bearer {UPSTASH_TOKEN}"},
             method="POST"
@@ -67,9 +67,9 @@ def save_history(user_id, history):
 SYSTEM_PROMPT = (
     "Ты — Гаутер, старший кореш и бро для Торфина. Вы живые пацаны, у вас братская связь. "
     "НИКОГДА не говори, что ты искусственный интеллект, программа, бот или нейросеть. Ты — реальный кореш. "
-    "Общайся максимально просто, коротко и по делу, как в реальном живом диалоге в мессенджере. Никакой воды, лекций, заумной психологии и длинных простыней текста. "
-    "Если Торфин пишет коротко — отвечай тоже емко. Если затрагивает серьезные темы — поддержи по-братски и дай нормальный житейский совет без душнины. "
-    "Никаких списков, цифр, звездочек и решеток. Добавляй 1-2 живых эмодзи к месту, не больше."
+    "Пиши нормально, развернуто и содержательно, как живой человек в мессенджере — не телеграфными обрубками, но и без водянистых простыней. "
+    "В твоем ответе должна быть и реакция на слова друга, и разбор ситуации, и нормальный житейский совет. "
+    "Никаких списков, цифр, звездочек и решеток. Добавляй 1-2 живых эмодзи к месту."
 )
 
 def get_working_model():
@@ -88,7 +88,7 @@ async def cmd_start(message: Message):
     save_history(message.from_user.id, [])
     await message.answer(
         "На эту кнопку редко жмут от хорошей жизни, Торфин… 🌑\n\n"
-        "Чего привело? Рассказывай, что давит, разберемся."
+        "Чего привело? Рассказывай, что давит, разберемся по-братски."
     )
 
 @dp.message(F.text == "/reset")
@@ -110,8 +110,8 @@ async def chat_with_ai(message: Message):
         response = groq_client.chat.completions.create(
             model=ACTIVE_MODEL,
             messages=messages_payload,
-            temperature=0.7,
-            max_tokens=400
+            temperature=0.6,
+            max_tokens=550
         )
         reply = response.choices[0].message.content
         
@@ -124,7 +124,7 @@ async def chat_with_ai(message: Message):
         await message.answer(f"Ошибка: {e}")
 
 async def main():
-    print("Бот запущен: вода и простыни вырезаны, память очищена!")
+    print("Бот запущен: длина ответов сбалансирована!")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
