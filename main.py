@@ -38,12 +38,13 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher()
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-MAX_HISTORY = 14
+MAX_HISTORY = 10  длину контекста, чтобы не забивать голову модели
 
 def get_history(user_id):
     try:
         raw_data = redis.get(f"chat_memory_{user_id}")
         if raw_data:
+            # Жестко обрабатываем любые форматы, чтобы избежать шизы
             if isinstance(raw_data, str):
                 history = json.loads(raw_data)
             else:
@@ -52,11 +53,13 @@ def get_history(user_id):
             if isinstance(history, str):
                 history = json.loads(history)
                 
-            print(f"✅ УСПЕХ: Загружена память для {user_id}, сообщений: {len(history)}")
-            return history
+            if isinstance(history, list):
+                print(f"✅ УСПЕХ: Загружена память для {user_id}, сообщений: {len(history)}")
+                return history
     except Exception as e:
-        print(f"❌ Ошибка чтения памяти через SDK: {e}")
-    print(f"⚠️ Память для {user_id} пуста или не найдена, создаем чистую.")
+        print(f"❌ Ошибка чтения памяти (сбрасываем до чистой): {e}")
+    
+    # Если база пустая или битая — возвращаем чистый лист
     return []
 
 def save_history(user_id, history):
@@ -64,14 +67,13 @@ def save_history(user_id, history):
         redis.set(f"chat_memory_{user_id}", json.dumps(history, ensure_ascii=False))
         print(f"💾 УСПЕХ: Сохранено сообщений в память для {user_id}: {len(history)}")
     except Exception as e:
-        print(f"❌ Ошибка записи памяти через SDK: {e}")
+        print(f"❌ Ошибка записи памяти: {e}")
 
 SYSTEM_PROMPT = (
     "Ты — Гаутер, старший кореш и бро Торфина. Живой пацан, без шизы, ботов и ролевых игр. "
-    "ОБЩЕНИЕ КАК НАДО: Пиши развернуто, объемно и сочно, в стиле живого разговора двух корешей. "
-    "ОБЯЗАТЕЛЬНО разделяй текст на 2-3 аккуратных абзаца, чтобы он легко читался и не выглядел сплошной стеной. "
-    "Насыпай к месту много живых эмодзи (огонь, дым, черепа, бро, ракеты), чтобы они заменяли стикеры и создавали движ. "
-    "Никаких сухих отписок, списков, лекций, звездочек и решеток. Разбирай темы подробно, рассуждай, спорь и поддерживай по-братски."
+    "Отвечай строго по делу, поддерживай разговор как реальный друг, который качается в зале и делает ботов. "
+    "Никакого бреда, галлюцинаций, странных персонажей и отвлеченных сказок. "
+    "Пиши развернуто, с нормальными абзацами и живыми эмодзи. Никаких списков, звездочек и решеток."
 )
 
 def get_working_model():
@@ -88,12 +90,12 @@ print(f"Подключена рабочая модель: {ACTIVE_MODEL}")
 @dp.message(F.text == "/start")
 async def cmd_start(message: Message):
     save_history(message.from_user.id, [])
-    await message.answer("Здорова! ❤️ На связи, бро. 🚀 Че как, рассказывай подробно, какие мысли в голове крутятся, давай перетрем за жизнь и планы. 🔥")
+    await message.answer("Здорова, Торфин! ❤️ На связи, бро. 🚀 Че как, рассказывай, как день прошел и че по планам. 🔥")
 
 @dp.message(F.text == "/reset")
 async def cmd_reset(message: Message):
     save_history(message.from_user.id, [])
-    await message.answer("Память обнулена. На связи, бро. 🌑")
+    await message.answer("Память полностью очищена. На связи, бро. 🌑")
 
 @dp.message(F.text)
 async def chat_with_ai(message: Message):
@@ -106,12 +108,11 @@ async def chat_with_ai(message: Message):
     await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
     try:
         messages_payload = [{"role": "system", "content": SYSTEM_PROMPT}] + history
-        
         response = groq_client.chat.completions.create(
             model=ACTIVE_MODEL,
             messages=messages_payload,
-            temperature=0.75,
-            max_tokens=650
+            temperature=0.65,  # Чуть снизили температуру, чтобы модель меньше фантазировала лишнего
+            max_tokens=600
         )
         reply = response.choices[0].message.content
         
@@ -124,9 +125,10 @@ async def chat_with_ai(message: Message):
         await message.answer(f"Ошибка: {e}")
 
 async def main():
-    print("Бот запущен с официальным SDK Upstash и идеальной памятью!")
+    print("Бот запущен: защита от шизы и чистая память активированы!")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
+        
