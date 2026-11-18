@@ -27,54 +27,48 @@ threading.Thread(target=run_server, daemon=True).start()
 TOKEN = "9161797826:AAEQJry988MuMb1nf39rLb3oYqsMCIH_vm0"
 GROQ_API_KEY = "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"
 
-# Подключаем официальный клиент Upstash для Python
-redis = Redis(
-    url="https://funky-manatee-107338.upstash.io",
-    token="gQAAAAAAAnKAAIgCDI5NJA3YjUwYmE3NDQ0NDcgODUyYjUzRmZja044"
-)
-
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 groq_client = Groq(api_key=GROQ_API_KEY)
 
 MAX_HISTORY = 12
+DB_FILE = "chat_memory.json"
+
+def load_db():
+    if os.path.exists(DB_FILE):
+        try:
+            with open(DB_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_db(data):
+    try:
+        with open(DB_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"❌ Ошибка записи файла памяти: {e}")
 
 def get_history(user_id):
-    key = f"chat_memory_{user_id}"
-    try:
-        raw_data = redis.get(key)
-        print(f"🔍 ДЕБАГ GET: Ключ '{key}' -> тип: {type(raw_data)}, данные: {raw_data}")
-        
-        if raw_data:
-            if isinstance(raw_data, str):
-                history = json.loads(raw_data)
-            else:
-                history = raw_data
-            
-            if isinstance(history, str):
-                history = json.loads(history)
-                
-            if isinstance(history, list):
-                clean = [msg for msg in history if isinstance(msg, dict) and msg.get("role") in ["user", "assistant"]]
-                print(f"✅ УСПЕХ: Память загружена, сообщений -> {len(clean)}")
-                return clean
-    except Exception as e:
-        print(f"❌ ОШИБКА ЧТЕНИЯ ПАМЯТИ: {e}")
-    
-    print(f"⚠️ ПАМЯТЬ ПУСТА: Создаем чистый лист для {user_id}")
+    db = load_db()
+    user_str = str(user_id)
+    if user_str in db:
+        history = db[user_str]
+        if isinstance(history, list):
+            print(f"✅ Память загружена для {user_id}: сообщений -> {len(history)}")
+            return history
+    print(f"⚠️ Память пуста для {user_id}")
     return []
 
 def save_history(user_id, history):
-    key = f"chat_memory_{user_id}"
-    try:
-        clean = [msg for msg in history if isinstance(msg, dict) and msg.get("role") in ["user", "assistant"]]
-        payload = json.dumps(clean, ensure_ascii=False)
-        redis.set(key, payload)
-        print(f"💾 УСПЕХ: Сохранено в ключ '{key}', всего сообщений -> {len(clean)}")
-    except Exception as e:
-        print(f"❌ ОШИБКА ЗАПИСИ ПАМЯТИ: {e}")
+    db = load_db()
+    user_str = str(user_id)
+    clean = [msg for msg in history if isinstance(msg, dict) and msg.get("role") in ["user", "assistant"]]
+    db[user_str] = clean
+    save_db(db)
+    print(f"💾 Память сохранена для {user_id}: всего сообщений -> {len(clean)}")
 
-# Тот самый идеальный, сочный промпт кореша
 SYSTEM_PROMPT = (
     "Ты — Гаутер, старший кореш и бро Торфина. Живой пацан, без шизы, ботов и ролевых игр. "
     "ОБЩЕНИЕ КАК НАДО: Пиши максимально развернуто, объемно и сочно, в стиле живого разговора двух реальных корешей. "
@@ -108,13 +102,13 @@ async def cmd_reset(message: Message):
 async def chat_with_ai(message: Message):
     user_id = message.from_user.id
     history = get_history(user_id)
+
     history.append({"role": "user", "content": message.text})
     history = history[-MAX_HISTORY:]
 
     await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
     try:
         messages_payload = [{"role": "system", "content": SYSTEM_PROMPT}] + history
-        
         response = groq_client.chat.completions.create(
             model=ACTIVE_MODEL,
             messages=messages_payload,
@@ -132,7 +126,7 @@ async def chat_with_ai(message: Message):
         await message.answer(f"Ошибка: {e}")
 
 async def main():
-    print("Бот запущен с базой bro-bot: отступы в норме, погнали!")
+    print("Бот запущен на локальной надежной памяти без лишнего мусора!")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
