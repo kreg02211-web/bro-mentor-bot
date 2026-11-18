@@ -28,7 +28,7 @@ threading.Thread(target=run_server, daemon=True).start()
 TOKEN = "9161797826:AAEQJry988MuMb1nf39rLb3oYqsMCIH_vm0"
 GROQ_API_KEY = "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"
 
-# Подключаем официальный клиент Upstash для Python
+# Подключаем Redis строго по тем ключам, которые видны на твоем скриншоте Upstash для базы bro-bot
 redis = Redis(
     url="https://funky-manatee-107338.upstash.io",
     token="gQAAAAAAAnKAAIgCDI5NJA3YjUwYmE3NDQ0NDcgODUyYjUzRmZja044"
@@ -38,11 +38,14 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher()
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-MAX_HISTORY = 12  # Держим нормальный объем истории, чтобы помнил контекст
+MAX_HISTORY = 12
 
 def get_history(user_id):
+    key = f"chat_memory_{user_id}"
     try:
-        raw_data = redis.get(f"chat_memory_{user_id}")
+        raw_data = redis.get(key)
+        print(f"🔍 ДЕБАГ GET: Ключ '{key}' -> тип: {type(raw_data)}, данные: {raw_data}")
+        
         if raw_data:
             if isinstance(raw_data, str):
                 history = json.loads(raw_data)
@@ -53,24 +56,26 @@ def get_history(user_id):
                 history = json.loads(history)
                 
             if isinstance(history, list):
-                # Очищаем от всякого мусора, оставляем только диалог
                 clean = [msg for msg in history if isinstance(msg, dict) and msg.get("role") in ["user", "assistant"]]
-                print(f"✅ Память загружена для {user_id}: сообщений -> {len(clean)}")
+                print(f"✅ УСПЕХ: Память загружена, сообщений -> {len(clean)}")
                 return clean
     except Exception as e:
-        print(f"❌ Ошибка чтения памяти: {e}")
-    print(f"⚠️ Память для {user_id} пуста.")
+        print(f"❌ ОШИБКА ЧТЕНИЯ ПАМЯТИ: {e}")
+    
+    print(f"⚠️ ПАМЯТЬ ПУСТА: Создаем чистый лист для {user_id}")
     return []
 
 def save_history(user_id, history):
+    key = f"chat_memory_{user_id}"
     try:
         clean = [msg for msg in history if isinstance(msg, dict) and msg.get("role") in ["user", "assistant"]]
-        redis.set(f"chat_memory_{user_id}", json.dumps(clean, ensure_ascii=False))
-        print(f"💾 Память сохранена для {user_id}: всего сообщений -> {len(clean)}")
+        payload = json.dumps(clean, ensure_ascii=False)
+        redis.set(key, payload)
+        print(f"💾 УСПЕХ: Сохранено в ключ '{key}', всего сообщений -> {len(clean)}")
     except Exception as e:
-        print(f"❌ Ошибка записи памяти: {e}")
+        print(f"❌ ОШИБКА ЗАПИСИ ПАМЯТИ: {e}")
 
-# Тот самый идеальный, сочный промпт для стиля кореша
+# Тот самый идеальный, сочный промпт кореша
 SYSTEM_PROMPT = (
     "Ты — Гаутер, старший кореш и бро Торфина. Живой пацан, без шизы, ботов и ролевых игр. "
     "ОБЩЕНИЕ КАК НАДО: Пиши максимально развернуто, объемно и сочно, в стиле живого разговора двух реальных корешей. "
@@ -99,12 +104,11 @@ async def cmd_start(message: Message):
 async def cmd_reset(message: Message):
     save_history(message.from_user.id, [])
     await message.answer("Память обнулена. На связи, бро. 🌑")
-
-@dp.message(F.text)
+    @dp.message(F.text)
 async def chat_with_ai(message: Message):
     user_id = message.from_user.id
     history = get_history(user_id)
-    # Добавляем свежее сообщение юзера
+
     history.append({"role": "user", "content": message.text})
     history = history[-MAX_HISTORY:]
 
@@ -116,11 +120,10 @@ async def chat_with_ai(message: Message):
             model=ACTIVE_MODEL,
             messages=messages_payload,
             temperature=0.72,
-            max_tokens=750  # Поставили жирный запас, чтобы текст не обрывался и шел развернуто
+            max_tokens=750
         )
         reply = response.choices[0].message.content
         
-        # Добавляем ответ ассистента в историю и сохраняем в облако
         history.append({"role": "assistant", "content": reply})
         history = history[-MAX_HISTORY:]
         save_history(user_id, history)
@@ -130,7 +133,7 @@ async def chat_with_ai(message: Message):
         await message.answer(f"Ошибка: {e}")
 
 async def main():
-    print("Бот запущен: стиль восстановлен, токены подняты, память активна!")
+    print("Бот запущен с базой bro-bot: стиль на месте, дебаг памяти активен!")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
