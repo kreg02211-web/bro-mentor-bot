@@ -38,7 +38,7 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher()
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-MAX_HISTORY = 10
+MAX_HISTORY = 8
 
 def get_history(user_id):
     try:
@@ -53,25 +53,24 @@ def get_history(user_id):
                 history = json.loads(history)
                 
             if isinstance(history, list):
-                print(f"✅ УСПЕХ: Загружена память для {user_id}, сообщений: {len(history)}")
-                return history
+                # Очищаем историю от любых системных артефактов на всякий случай
+                clean_history = [msg for msg in history if msg.get("role") in ["user", "assistant"]]
+                return clean_history
     except Exception as e:
-        print(f"❌ Ошибка чтения памяти (сбрасываем до чистой): {e}")
-    
+        print(f"❌ Ошибка чтения памяти: {e}")
     return []
 
 def save_history(user_id, history):
     try:
         redis.set(f"chat_memory_{user_id}", json.dumps(history, ensure_ascii=False))
-        print(f"💾 УСПЕХ: Сохранено сообщений в память для {user_id}: {len(history)}")
     except Exception as e:
         print(f"❌ Ошибка записи памяти: {e}")
 
 SYSTEM_PROMPT = (
     "Ты — Гаутер, старший кореш и бро Торфина. Живой пацан, без шизы, ботов и ролевых игр. "
-    "Отвечай строго по делу, поддерживай разговор как реальный друг, который качается в зале и делает ботов. "
-    "Никакого бреда, галлюцинаций, странных персонажей и отвлеченных сказок. "
-    "Пиши развернуто, с нормальными абзацами и живыми эмодзи. Никаких списков, звездочек и решеток."
+    "Общайся как реальный кореш, который качает железо, пилит проекты и разбирается в жизни. "
+    "Никаких администраторов, игровых серверов, правил группы и официального тона. "
+    "Пиши сочно, развернуто, с нормальными абзацами и живыми эмодзи. Никаких списков, звездочек и решеток."
 )
 
 def get_working_model():
@@ -88,12 +87,12 @@ print(f"Подключена рабочая модель: {ACTIVE_MODEL}")
 @dp.message(F.text == "/start")
 async def cmd_start(message: Message):
     save_history(message.from_user.id, [])
-    await message.answer("Здорова, Торфин! ❤️ На связи, бро. 🚀 Че как, рассказывай, как день прошел и че по планам. 🔥")
+    await message.answer("Здорова, Торфин! ❤️ На связи, бро. 🚀 Че как, рассказывай, какие планы на сегодня и че по качу. 🔥")
 
 @dp.message(F.text == "/reset")
 async def cmd_reset(message: Message):
     save_history(message.from_user.id, [])
-    await message.answer("Память полностью очищена. На связи, бро. 🌑")
+    await message.answer("Память сброшена, шиза выбита. На связи, бро. 🌑")
 
 @dp.message(F.text)
 async def chat_with_ai(message: Message):
@@ -105,12 +104,13 @@ async def chat_with_ai(message: Message):
 
     await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
     try:
+        # Жестко собираем пакет: сначала системный промпт, потом чистая история
         messages_payload = [{"role": "system", "content": SYSTEM_PROMPT}] + history
         
         response = groq_client.chat.completions.create(
-            model=ACTIVE_MODEL,
+        model=ACTIVE_MODEL,
             messages=messages_payload,
-        temperature=0.65,
+            temperature=0.7,
             max_tokens=600
         )
         reply = response.choices[0].message.content
@@ -124,7 +124,7 @@ async def chat_with_ai(message: Message):
         await message.answer(f"Ошибка: {e}")
 
 async def main():
-    print("Бот запущен без синтаксических ошибок, защита активна!")
+    print("Бот запущен: защита от ролевой шизы включена!")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
