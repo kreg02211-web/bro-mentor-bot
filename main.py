@@ -38,13 +38,12 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher()
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-MAX_HISTORY = 10  длину контекста, чтобы не забивать голову модели
+MAX_HISTORY = 10
 
 def get_history(user_id):
     try:
         raw_data = redis.get(f"chat_memory_{user_id}")
         if raw_data:
-            # Жестко обрабатываем любые форматы, чтобы избежать шизы
             if isinstance(raw_data, str):
                 history = json.loads(raw_data)
             else:
@@ -59,7 +58,6 @@ def get_history(user_id):
     except Exception as e:
         print(f"❌ Ошибка чтения памяти (сбрасываем до чистой): {e}")
     
-    # Если база пустая или битая — возвращаем чистый лист
     return []
 
 def save_history(user_id, history):
@@ -108,10 +106,11 @@ async def chat_with_ai(message: Message):
     await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
     try:
         messages_payload = [{"role": "system", "content": SYSTEM_PROMPT}] + history
+        
         response = groq_client.chat.completions.create(
             model=ACTIVE_MODEL,
             messages=messages_payload,
-            temperature=0.65,  # Чуть снизили температуру, чтобы модель меньше фантазировала лишнего
+        temperature=0.65,
             max_tokens=600
         )
         reply = response.choices[0].message.content
@@ -125,10 +124,9 @@ async def chat_with_ai(message: Message):
         await message.answer(f"Ошибка: {e}")
 
 async def main():
-    print("Бот запущен: защита от шизы и чистая память активированы!")
+    print("Бот запущен без синтаксических ошибок, защита активна!")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
-        
