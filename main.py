@@ -1,8 +1,23 @@
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
 import asyncio
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message
 from groq import Groq
 
+# Заглушка порта для Render
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is alive!")
+
+def run_server():
+    server = HTTPServer(("0.0.0.0", 10000), SimpleHandler)
+    server.serve_forever()
+
+threading.Thread(target=run_server, daemon=True).start()
 BOT_TOKEN = "9161797826:AAEQJry988MuMb1nf39rLb3oYqsMCIH_vm0"
 GROQ_API_KEY = "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"
 
@@ -49,17 +64,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
-
-class SimpleHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"Bot is alive!")
-
-def run_server():
-    server = HTTPServer(("0.0.0.0", 10000), SimpleHandler)
-    server.serve_forever()
-
-threading.Thread(target=run_server, daemon=True).start()
