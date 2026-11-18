@@ -60,7 +60,7 @@ async def chat_with_ai(message: Message):
         await message.answer(f"Ошибка: {e}")
 
 async def main():
-    print("Новый ИИ-бро запущен!")
+    print("Бот запущен и готов к работе без лишней духоты!")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
