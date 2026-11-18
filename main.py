@@ -23,6 +23,7 @@ def run_server():
     server = HTTPServer(("0.0.0.0", 10000), SimpleHandler)
     server.serve_forever()
 
+# Запускаем веб-сервер в фоне, чтобы Render не ругался
 threading.Thread(target=run_server, daemon=True).start()
 
 TOKEN = "9161797826:AAEQJry988MuMb1nf39rLb3oYqsMCIH_vm0"
@@ -40,7 +41,7 @@ MAX_HISTORY = 10
 def get_history(user_id):
     try:
         req = urllib.request.Request(
-            f"{UPSTASH_URL}/get/chat_v6_{user_id}",
+            f"{UPSTASH_URL}/get/chat_v7_{user_id}",
             headers={"Authorization": f"Bearer {UPSTASH_TOKEN}"}
         )
         with urllib.request.urlopen(req, timeout=5) as resp:
@@ -55,7 +56,7 @@ def save_history(user_id, history):
     try:
         payload = json.dumps(history, ensure_ascii=False).encode("utf-8")
         req = urllib.request.Request(
-            f"{UPSTASH_URL}/set/chat_v6_{user_id}",
+            f"{UPSTASH_URL}/set/chat_v7_{user_id}",
             data=payload,
             headers={"Authorization": f"Bearer {UPSTASH_TOKEN}"},
             method="POST"
@@ -67,8 +68,10 @@ def save_history(user_id, history):
 SYSTEM_PROMPT = (
     "Ты — Гаутер, старший кореш и бро Торфина. "
     "Никаких ролей, нейросетей, ботов и шизофрении. Ты — живой пацан. "
-    "Отвечай коротко, по-братски и по делу: ровно 2-3 предложения, как в обычной переписке в телеге. "
-    "Никаких простыней, лекций и воды. Добавь 1 эмодзи к месту."
+    "Общайся по-простому, мягко и на расслабоне, как в братском разговоре. "
+    "Обязательно добавляй к месту живые эмодзи, чтобы текст не казался сухим. "
+    "Никаких лекций, нравоучений, списков и длинных текстов. Отвечай кратко, емко и по сути (2-3 предложения). "
+    "Никаких звездочек (**), решеток (#). Только живой человеческий язык и теплый вайб."
 )
 
 def get_working_model():
@@ -85,9 +88,7 @@ print(f"Подключена рабочая модель: {ACTIVE_MODEL}")
 @dp.message(F.text == "/start")
 async def cmd_start(message: Message):
     save_history(message.from_user.id, [])
-    await message.answer(
-        "Здарова, Торфин. Чего как? Рассказывай. 👊"
-    )
+    await message.answer("Здорова, Торфин! ❤️ На связи. Че как, рассказывай, какие мысли?")
 
 @dp.message(F.text == "/reset")
 async def cmd_reset(message: Message):
@@ -109,8 +110,8 @@ async def chat_with_ai(message: Message):
         response = groq_client.chat.completions.create(
             model=ACTIVE_MODEL,
             messages=messages_payload,
-            temperature=0.5,
-            max_tokens=160  # Жесткий лимит, чтобы физически не мог писать простыни
+            temperature=0.7,
+            max_tokens=150
         )
         reply = response.choices[0].message.content
         
@@ -121,10 +122,12 @@ async def chat_with_ai(message: Message):
         await message.answer(reply)
     except Exception as e:
         await message.answer(f"Ошибка: {e}")
-        async def main():
-    print("Бот запущен: токены урезаны, шиза заблокирована!")
+
+async def main():
+    print("Бот запущен и пашет на все сто!")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
+        
