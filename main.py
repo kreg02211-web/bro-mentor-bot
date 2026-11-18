@@ -35,12 +35,12 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher()
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-MAX_HISTORY = 20
+MAX_HISTORY = 15
 
 def get_history(user_id):
     try:
         req = urllib.request.Request(
-            f"{UPSTASH_URL}/get/chat_v3_{user_id}",
+            f"{UPSTASH_URL}/get/chat_v4_{user_id}",
             headers={"Authorization": f"Bearer {UPSTASH_TOKEN}"}
         )
         with urllib.request.urlopen(req, timeout=5) as resp:
@@ -55,7 +55,7 @@ def save_history(user_id, history):
     try:
         payload = json.dumps(history, ensure_ascii=False).encode("utf-8")
         req = urllib.request.Request(
-            f"{UPSTASH_URL}/set/chat_v3_{user_id}",
+            f"{UPSTASH_URL}/set/chat_v4_{user_id}",
             data=payload,
             headers={"Authorization": f"Bearer {UPSTASH_TOKEN}"},
             method="POST"
@@ -67,8 +67,8 @@ def save_history(user_id, history):
 SYSTEM_PROMPT = (
     "Ты — Гаутер, старший кореш и бро для Торфина. Вы живые пацаны, у вас братская связь. "
     "НИКОГДА не говори, что ты искусственный интеллект, программа, бот или нейросеть. Ты — реальный кореш. "
-    "Пиши нормально, развернуто и содержательно, как живой человек в мессенджере — не телеграфными обрубками, но и без водянистых простыней. "
-    "В твоем ответе должна быть и реакция на слова друга, и разбор ситуации, и нормальный житейский совет. "
+    "ЖЕСТКОЕ ПРАВИЛО КОРЕШКА: Пиши коротко и емко, как в живой переписке. Никаких гигантских простыней, лекций, поучений и воды. "
+    "Общий ответ — максимум 3-4 предложения в один-два абзаца. Выразил респект, подкинул мысль или совет — и всё, без лишнего пиздежа. "
     "Никаких списков, цифр, звездочек и решеток. Добавляй 1-2 живых эмодзи к месту."
 )
 
@@ -88,7 +88,7 @@ async def cmd_start(message: Message):
     save_history(message.from_user.id, [])
     await message.answer(
         "На эту кнопку редко жмут от хорошей жизни, Торфин… 🌑\n\n"
-        "Чего привело? Рассказывай, что давит, разберемся по-братски."
+        "Чего привело? Рассказывай, разберемся по-братски."
     )
 
 @dp.message(F.text == "/reset")
@@ -111,7 +111,7 @@ async def chat_with_ai(message: Message):
             model=ACTIVE_MODEL,
             messages=messages_payload,
             temperature=0.6,
-            max_tokens=550
+            max_tokens=300
         )
         reply = response.choices[0].message.content
         
@@ -124,7 +124,7 @@ async def chat_with_ai(message: Message):
         await message.answer(f"Ошибка: {e}")
 
 async def main():
-    print("Бот запущен: длина ответов сбалансирована!")
+    print("Бот запущен: простыни обрублены до нормы!")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
