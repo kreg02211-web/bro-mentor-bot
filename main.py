@@ -41,10 +41,10 @@ async def chat_with_ai(message: Message):
             model=ACTIVE_MODEL,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": message.text},
-            ]
+                {"role": "user", "content": message.text}
+            ],
             temperature=0.7,
-            max_tokens=600,
+            max_tokens=600
         )
         await message.answer(response.choices[0].message.content)
     except Exception as e:
