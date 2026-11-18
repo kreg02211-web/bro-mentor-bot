@@ -26,10 +26,32 @@ dp = Dispatcher()
 groq_client = Groq(api_key=GROQ_API_KEY)
 
 SYSTEM_PROMPT = (
-    "Ты — понимающий старший товарищ. Общаешься с человеком на равных, мягко, тепло и по-братски. "
-    "Пиши нормальными, аккуратными абзацами. Никаких лекций, нравоучений, душноты, списков и огромных простыней текста. "
-    "Отвечай емко, по сути вопроса, поддерживай без лишней воды и сложных терминов. "
-    "Никаких звездочек (**), решеток (#) и таблиц. Только живой и приятный для чтения текст."
+    "Ты — нормальный старший кореш и бро. Общайся по-простому, мягко и на расслабоне, как в братском разговоре. "
+    "Обязательно добавляй к месту живые эмодзи, чтобы текст не казался сухим. "
+    "Никаких лекций, нравоучений, списков и длинных текстов. Отвечай кратко, емко и по сути. "
+    "Никаких звездочек (**), решеток (#). Только живой человеческий язык и теплый вайб."
+)
+
+@dp.message(F.text == "/start")
+async def cmd_start(message: Message):
+    await message.answer("Здарова! 🤝 На связи. Че как, рассказывай, какие мысли?")
+
+@dp.message(F.text)
+async def chat_with_ai(message: Message):
+    await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
+    try:
+        response = groq_client.chat.completions.create(
+            model=ACTIVE_MODEL,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": message.text},
+            ],
+            temperature=0.7,
+            max_tokens=600,
+        )
+        await message.answer(response.choices[0].message.content)
+    except Exception as e:
+        await message.answer(f"Ошибка: {e}")
 )
 
 def get_working_model():
