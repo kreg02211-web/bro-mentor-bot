@@ -6,7 +6,6 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message
 from groq import Groq
-from upstash_redis import Redis
 
 # Заглушка порта для Render
 class SimpleHandler(BaseHTTPRequestHandler):
