@@ -4,8 +4,8 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message
 from groq import Groq
 
-TOKEN = os.getenv("BOT_TOKEN")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+BOT_TOKEN=9161797826:AAEQJry988MuMb1nf39rLb3oYqsMCIH_vm0
+GROQ_API_KEY=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
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
