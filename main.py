@@ -77,7 +77,7 @@ SYSTEM_PROMPT = (
     "Никаких сухих отписок, списков, лекций, звездочек и решеток. Разбирай темы подробно, рассуждай, спорь и поддерживай по-братски."
 )
 
-ACTIVE_MODEL = "llama-3.3-70b-versatile"
+ACTIVE_MODEL = "openai/gpt-oss-120b"
 print(f"Подключена модель: {ACTIVE_MODEL}")
 
 @dp.message(F.text == "/start")
