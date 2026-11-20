@@ -40,7 +40,7 @@ def load_db():
         try:
             with open(DB_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except:
+        except Exception:
             return {}
     return {}
 
@@ -49,7 +49,7 @@ def save_db(data):
         with open(DB_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        print(f"❌ Ошибка записи файла памяти: {e}")
+        print(f"Ошибка записи файла памяти: {e}")
 
 def get_history(user_id):
     db = load_db()
@@ -57,9 +57,9 @@ def get_history(user_id):
     if user_str in db:
         history = db[user_str]
         if isinstance(history, list):
-            print(f"✅ Память загружена для {user_id}: сообщений -> {len(history)}")
+            print(f"Память загружена для {user_id}: сообщений -> {len(history)}")
             return history
-    print(f"⚠️ Память пуста для {user_id}")
+    print(f"Память пуста для {user_id}")
     return []
 
 def save_history(user_id, history):
@@ -68,7 +68,7 @@ def save_history(user_id, history):
     clean = [msg for msg in history if isinstance(msg, dict) and msg.get("role") in ["user", "assistant"]]
     db[user_str] = clean
     save_db(db)
-    print(f"💾 Память сохранена для {user_id}: всего сообщений -> {len(clean)}")
+    print(f"Память сохранена для {user_id}: всего сообщений -> {len(clean)}")
 
 SYSTEM_PROMPT = (
     "Ты — Гаутер, старший кореш и бро Торфина. Живой пацан, без шизы, ботов и ролевых игр. "
