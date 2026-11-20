@@ -87,9 +87,11 @@ def get_user_record(user_id):
     user_str = str(user_id)
     raw = db.get(user_str)
 
-    # Обратная совместимость со старым форматом (когда лежал просто список сообщений)
     if isinstance(raw, list):
-        clean = [msg for msg in raw if isinstance(msg, dict) and msg.get("role") in ["user", "assistant"]]
+        clean = [
+            msg for msg in raw
+            if isinstance(msg, dict) and msg.get("role") in ["user", "assistant"]
+        ]
         return {"lang": "ru", "history": clean}
 
     if isinstance(raw, dict):
@@ -97,7 +99,10 @@ def get_user_record(user_id):
         if lang not in ["ru", "en"]:
             lang = "ru"
         hist = raw.get("history", [])
-        clean = [msg for msg in hist if isinstance(msg, dict) and msg.get("role") in ["user", "assistant"]]
+        clean = [
+            msg for msg in hist
+            if isinstance(msg, dict) and msg.get("role") in ["user", "assistant"]
+        ]
         return {"lang": lang, "history": clean}
 
     return {"lang": "ru", "history": []}
@@ -111,7 +116,10 @@ def save_history(user_id, history):
     db = load_db()
     user_str = str(user_id)
     current = get_user_record(user_id)
-    clean = [msg for msg in history if isinstance(msg, dict) and msg.get("role") in ["user", "assistant"]]
+    clean = [
+        msg for msg in history
+        if isinstance(msg, dict) and msg.get("role") in ["user", "assistant"]
+    ]
     db[user_str] = {
         "lang": current["lang"],
         "history": clean,
