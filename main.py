@@ -14,12 +14,13 @@ class SimpleHandler(BaseHTTPRequestHandler):
         self.send_header("Content-type", "text/html")
         self.end_headers()
         self.wfile.write(b"Bot is alive!")
-    
+
     def log_message(self, format, *args):
         pass
 
 def run_server():
-    server = HTTPServer(("0.0.0.0", 10000), SimpleHandler)
+    port = int(os.getenv("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), SimpleHandler)
     server.serve_forever()
 
 threading.Thread(target=run_server, daemon=True).start()
@@ -77,16 +78,8 @@ SYSTEM_PROMPT = (
     "Никаких сухих отписок, списков, лекций, звездочек и решеток. Разбирай темы подробно, рассуждай, спорь и поддерживай по-братски."
 )
 
-def get_working_model():
-    models = groq_client.models.list().data
-    for m in models:
-        mid = m.id.lower()
-        if "whisper" not in mid and "guard" not in mid and "tts" not in mid and "orpheus" not in mid:
-            return m.id
-    return models[0].id
-
-ACTIVE_MODEL = get_working_model()
-print(f"Подключена рабочая модель: {ACTIVE_MODEL}")
+ACTIVE_MODEL = "llama-3.3-70b-versatile"
+print(f"Подключена модель: {ACTIVE_MODEL}")
 
 @dp.message(F.text == "/start")
 async def cmd_start(message: Message):
@@ -116,19 +109,19 @@ async def chat_with_ai(message: Message):
             max_tokens=750
         )
         reply = response.choices[0].message.content
-        
+
         history.append({"role": "assistant", "content": reply})
         history = history[-MAX_HISTORY:]
         save_history(user_id, history)
-        
+
         await message.answer(reply)
     except Exception as e:
         await message.answer(f"Ошибка: {e}")
-
-async def main():
+        async def main():
     print("Бот запущен на локальной надежной памяти без лишнего мусора!")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
+        
