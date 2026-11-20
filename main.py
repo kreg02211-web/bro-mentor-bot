@@ -143,9 +143,9 @@ def get_user_record(user_id):
         return {"lang": lang, "mode": mode, "history": clean}
 
     return {"lang": "ru", "mode": DEFAULT_MODE, "history": []}
-    def get_history(user_id):
-    rec = get_user_record(user_id)
-    print(
+        def get_history(user_id):
+        rec = get_user_record(user_id)
+        print(
         f"✅ Память загружена для {user_id}: сообщений -> {len(rec['history'])}, "
         f"язык -> {rec['lang']}, режим -> {rec['mode']}"
     )
