@@ -77,16 +77,8 @@ SYSTEM_PROMPT = (
     "Никаких сухих отписок, списков, лекций, звездочек и решеток. Разбирай темы подробно, рассуждай, спорь и поддерживай по-братски."
 )
 
-def get_working_model():
-    models = groq_client.models.list().data
-    for m in models:
-        mid = m.id.lower()
-        if "whisper" not in mid and "guard" not in mid and "tts" not in mid and "orpheus" not in mid:
-            return m.id
-    return models[0].id
-
-ACTIVE_MODEL = get_working_model()
-print(f"Подключена рабочая модель: {ACTIVE_MODEL}")
+ACTIVE_MODEL = "llama-3.3-70b-versatile"
+print(f"Подключена модель: {ACTIVE_MODEL}")
 
 @dp.message(F.text == "/start")
 async def cmd_start(message: Message):
@@ -112,7 +104,7 @@ async def chat_with_ai(message: Message):
         response = groq_client.chat.completions.create(
             model=ACTIVE_MODEL,
             messages=messages_payload,
-            temperature=0.72,
+            temperature=0.5,
             max_tokens=750
         )
         reply = response.choices[0].message.content
