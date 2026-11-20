@@ -25,7 +25,7 @@ def run_server():
 
 threading.Thread(target=run_server, daemon=True).start()
 
-TOKEN = "9161797826:AAFPpUqWQzFXSn3z6vdzrzVDpkxi8eUckAM"
+TOKEN = "9161797826:AAHMePL0U-lshTOSVF17SRVxhynlqm66Ebk"
 GROQ_API_KEY = "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"
 
 bot = Bot(token=TOKEN)
