@@ -120,8 +120,8 @@ async def chat_with_ai(message: Message):
         async def main():    
             print("Бот запущен на локальной надежной памяти без лишнего мусора!")    
             await bot.delete_webhook(drop_pending_updates=True)    
-            await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    asyncio.run(main())
+            await dp.start_polling(bot) 
+            
+            if __name__ == "__main__":    
+                asyncio.run(main())
         
