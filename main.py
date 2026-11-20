@@ -14,13 +14,12 @@ class SimpleHandler(BaseHTTPRequestHandler):
         self.send_header("Content-type", "text/html")
         self.end_headers()
         self.wfile.write(b"Bot is alive!")
-
+    
     def log_message(self, format, *args):
         pass
 
 def run_server():
-    port = int(os.getenv("PORT", 10000))
-    server = HTTPServer(("0.0.0.0", port), SimpleHandler)
+    server = HTTPServer(("0.0.0.0", 10000), SimpleHandler)
     server.serve_forever()
 
 threading.Thread(target=run_server, daemon=True).start()
@@ -40,7 +39,7 @@ def load_db():
         try:
             with open(DB_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except Exception:
+        except:
             return {}
     return {}
 
@@ -49,7 +48,7 @@ def save_db(data):
         with open(DB_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        print(f"Ошибка записи файла памяти: {e}")
+        print(f"❌ Ошибка записи файла памяти: {e}")
 
 def get_history(user_id):
     db = load_db()
@@ -57,9 +56,9 @@ def get_history(user_id):
     if user_str in db:
         history = db[user_str]
         if isinstance(history, list):
-            print(f"Память загружена для {user_id}: сообщений -> {len(history)}")
+            print(f"✅ Память загружена для {user_id}: сообщений -> {len(history)}")
             return history
-    print(f"Память пуста для {user_id}")
+    print(f"⚠️ Память пуста для {user_id}")
     return []
 
 def save_history(user_id, history):
@@ -68,7 +67,7 @@ def save_history(user_id, history):
     clean = [msg for msg in history if isinstance(msg, dict) and msg.get("role") in ["user", "assistant"]]
     db[user_str] = clean
     save_db(db)
-    print(f"Память сохранена для {user_id}: всего сообщений -> {len(clean)}")
+    print(f"💾 Память сохранена для {user_id}: всего сообщений -> {len(clean)}")
 
 SYSTEM_PROMPT = (
     "Ты — Гаутер, старший кореш и бро Торфина. Живой пацан, без шизы, ботов и ролевых игр. "
@@ -78,8 +77,16 @@ SYSTEM_PROMPT = (
     "Никаких сухих отписок, списков, лекций, звездочек и решеток. Разбирай темы подробно, рассуждай, спорь и поддерживай по-братски."
 )
 
-ACTIVE_MODEL = "llama-3.3-70b-versatile"
-print(f"Подключена модель: {ACTIVE_MODEL}")
+def get_working_model():
+    models = groq_client.models.list().data
+    for m in models:
+        mid = m.id.lower()
+        if "whisper" not in mid and "guard" not in mid and "tts" not in mid and "orpheus" not in mid:
+            return m.id
+    return models[0].id
+
+ACTIVE_MODEL = get_working_model()
+print(f"Подключена рабочая модель: {ACTIVE_MODEL}")
 
 @dp.message(F.text == "/start")
 async def cmd_start(message: Message):
@@ -109,19 +116,19 @@ async def chat_with_ai(message: Message):
             max_tokens=750
         )
         reply = response.choices[0].message.content
-
+        
         history.append({"role": "assistant", "content": reply})
         history = history[-MAX_HISTORY:]
         save_history(user_id, history)
-
+        
         await message.answer(reply)
     except Exception as e:
         await message.answer(f"Ошибка: {e}")
-        async def main():    
-            print("Бот запущен на локальной надежной памяти без лишнего мусора!")    
-            await bot.delete_webhook(drop_pending_updates=True)    
-            await dp.start_polling(bot) 
-            
-            if __name__ == "__main__":    
-                asyncio.run(main())
-        
+
+async def main():
+    print("Бот запущен на локальной надежной памяти без лишнего мусора!")
+    await bot.delete_webhook(drop_pending_updates=True)
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
