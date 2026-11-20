@@ -155,14 +155,14 @@ def get_history(user_id):
 def save_history(user_id, history):
     db = load_db()
     user_str = str(user_id)
-    current = get_user_record(user_id)
+    current = get_user_record(user_id) or {}
     clean = [
         msg for msg in history
         if isinstance(msg, dict) and msg.get("role") in ["user", "assistant"]
     ]
     db[user_str] = {
-        "lang": current["lang"],
-        "mode": current["mode"],
+       "lang": current.get("lang", "ru"),
+        "mode": current.get("mode", DEFAULT_MODE),
         "history": clean,
     }
     save_db(db)
