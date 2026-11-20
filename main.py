@@ -269,9 +269,9 @@ print(f"Подключена модель: {ACTIVE_MODEL}")
 
 @dp.message(F.text == "/start")
 async def cmd_start(message: Message):
-    rec = get_user_record(message.from_user.id)
-    lang = rec["lang"]
-    mode_label = get_mode_label(rec["mode"], lang)
+    rec = get_user_record(message.from_user.id) or {}
+    lang = rec.get("lang", "ru")
+    mode_label = get_mode_label(rec.get("mode", DEFAULT_MODE), lang)
     save_history(message.from_user.id, [])
     if lang == "en":
         text = (
