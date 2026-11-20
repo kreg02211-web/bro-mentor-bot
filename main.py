@@ -8,8 +8,7 @@ from aiogram.types import Message
 from groq import Groq
 
 # Заглушка порта для Render
-
-    class SimpleHandler(BaseHTTPRequestHandler):
+class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.send_header("Content-type", "text/html")
