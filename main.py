@@ -433,7 +433,7 @@ async def cmd_info(message: Message):
             f"Сообщений в памяти: <b>{msg_count}/{MAX_HISTORY}</b>"
         )
     await message.answer(text, reply_markup=get_main_menu(lang), parse_mode="HTML")
-    @dp.message(F.text.in_({"💳 Запросы", "💳 Requests"}))
+@dp.message(F.text.in_({"💳 Запросы", "💳 Requests"}))
 async def cmd_buy_requests(message: Message):
     lang = get_user_lang(message.from_user.id)
     text = "💳 Выбери пакет запросов:" if lang == "ru" else "💳 Choose a request pack:"
