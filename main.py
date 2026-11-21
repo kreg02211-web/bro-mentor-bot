@@ -61,6 +61,15 @@ MAIN_MENU = ReplyKeyboardMarkup(
     input_field_placeholder="Напиши бро или выбери кнопку...",
 )
 
+START_LANG_KEYBOARD = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🇷🇺 Русский", callback_data="start_lang_ru"),
+            InlineKeyboardButton(text="🇬🇧 English", callback_data="start_lang_en"),
+        ]
+    ]
+)
+
 LANG_KEYBOARD = InlineKeyboardMarkup(
     inline_keyboard=[
         [
@@ -77,6 +86,26 @@ MODE_KEYBOARD = InlineKeyboardMarkup(
         [InlineKeyboardButton(text="🎯 Наставник", callback_data="mode_mentor")],
     ]
 )
+
+
+def get_main_menu(lang: str = "ru") -> ReplyKeyboardMarkup:
+    if lang == "en":
+        return ReplyKeyboardMarkup(
+            keyboard=[
+                [KeyboardButton(text="🌐 Language"), KeyboardButton(text="🎭 Modes")],
+                [KeyboardButton(text="🧹 Reset"), KeyboardButton(text="⚡️ Info")],
+            ],
+            resize_keyboard=True,
+            input_field_placeholder="Write to bro or pick a button...",
+        )
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="🌐 Язык"), KeyboardButton(text="🎭 Режимы")],
+            [KeyboardButton(text="🧹 Сброс"), KeyboardButton(text="⚡️ Инфо")],
+        ],
+        resize_keyboard=True,
+        input_field_placeholder="Напиши бро или выбери кнопку...",
+    )
 
 
 def get_mode_label(mode: str, lang: str) -> str:
@@ -106,9 +135,7 @@ def load_db():
             print(f"❌ Ошибка чтения файла памяти: {e}")
             return {}
     return {}
-
-
-def save_db(data):
+    def save_db(data):
     try:
         with open(DB_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
@@ -142,12 +169,14 @@ def get_user_record(user_id):
         ]
         return {"lang": lang, "mode": mode, "history": clean}
 
-        return {"lang": "ru", "mode": DEFAULT_MODE, "history": []}
+    return {"lang": "ru", "mode": DEFAULT_MODE, "history": []}
+
+
 def get_history(user_id):
     rec = get_user_record(user_id)
     print(
-    f"✅ Память загружена для {user_id}: сообщений -> {len(rec['history'])}, "
-    f"язык -> {rec['lang']}, режим -> {rec['mode']}"
+        f"✅ Память загружена для {user_id}: сообщений -> {len(rec['history'])}, "
+        f"язык -> {rec['lang']}, режим -> {rec['mode']}"
     )
     return rec["history"]
 
@@ -161,7 +190,7 @@ def save_history(user_id, history):
         if isinstance(msg, dict) and msg.get("role") in ["user", "assistant"]
     ]
     db[user_str] = {
-       "lang": current.get("lang", "ru"),
+        "lang": current.get("lang", "ru"),
         "mode": current.get("mode", DEFAULT_MODE),
         "history": clean,
     }
@@ -170,7 +199,7 @@ def save_history(user_id, history):
 
 
 def get_user_lang(user_id):
-    return get_user_record(user_id)["lang"]
+    return (get_user_record(user_id) or {}).get("lang", "ru")
 
 
 def set_user_lang(user_id, lang):
@@ -178,18 +207,18 @@ def set_user_lang(user_id, lang):
         lang = "ru"
     db = load_db()
     user_str = str(user_id)
-    current = get_user_record(user_id)
+    current = get_user_record(user_id) or {}
     db[user_str] = {
         "lang": lang,
-        "mode": current["mode"],
-        "history": current["history"],
+        "mode": current.get("mode", DEFAULT_MODE),
+        "history": current.get("history", []),
     }
     save_db(db)
     print(f"🌐 Язык для {user_id} изменён на: {lang}")
 
 
 def get_user_mode(user_id):
-    return get_user_record(user_id)["mode"]
+    return (get_user_record(user_id) or {}).get("mode", DEFAULT_MODE)
 
 
 def set_user_mode(user_id, mode):
@@ -197,11 +226,11 @@ def set_user_mode(user_id, mode):
         mode = DEFAULT_MODE
     db = load_db()
     user_str = str(user_id)
-    current = get_user_record(user_id)
+    current = get_user_record(user_id) or {}
     db[user_str] = {
-        "lang": current["lang"],
+        "lang": current.get("lang", "ru"),
         "mode": mode,
-        "history": current["history"],
+        "history": current.get("history", []),
     }
     save_db(db)
     print(f"🎭 Режим для {user_id} изменён на: {mode}")
@@ -222,7 +251,7 @@ def build_system_prompt(lang: str, mode: str = DEFAULT_MODE) -> str:
                 " Current focus mode: SUPPORT. Shift your angle to calm grounding, emotional backup, "
                 "and taking pressure off without judgment. Help the user breathe, unpack stress or "
                 "setbacks, and feel backed up while staying real."
-            ),
+                ),
             "bro": (
                 " Current focus mode: JUST BRO. Shift your angle to laid-back, genuine buddy talk — "
                 "trading thoughts, training, everyday life, banter, and real ideas without heavy pressure."
@@ -242,7 +271,7 @@ def build_system_prompt(lang: str, mode: str = DEFAULT_MODE) -> str:
         "читался и детально разбирал все темы. Насыпай к месту много живых эмодзи (огонь, дым, черепа, "
         "бро, ракеты), чтобы они заменяли стикеры и создавали движ. Никаких сухих отписок, списков, "
         "лекций, звездочек и решеток. Разбирай темы подробно, рассуждай, спорь и поддерживай "
-    "по-братски. Отвечай строго на русском языке."
+        "по-братски. Отвечай строго на русском языке."
     )
     mode_focus = {
         "support": (
@@ -269,10 +298,26 @@ print(f"Подключена модель: {ACTIVE_MODEL}")
 
 @dp.message(F.text == "/start")
 async def cmd_start(message: Message):
-    rec = get_user_record(message.from_user.id) or {}
-    lang = rec.get("lang", "ru")
-    mode_label = get_mode_label(rec.get("mode", DEFAULT_MODE), lang)
     save_history(message.from_user.id, [])
+    await message.answer(
+        "🌐 Выбери язык / Choose language:",
+        reply_markup=START_LANG_KEYBOARD,
+    )
+
+
+@dp.callback_query(F.data.in_({"start_lang_ru", "start_lang_en"}))
+async def process_start_lang_callback(callback: CallbackQuery):
+    lang = "en" if callback.data == "start_lang_en" else "ru"
+    set_user_lang(callback.from_user.id, lang)
+    rec = get_user_record(callback.from_user.id) or {}
+    mode_label = get_mode_label(rec.get("mode", DEFAULT_MODE), lang)
+
+    await callback.answer()
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+
     if lang == "en":
         text = (
             f"Yo! ❤️ Locked in, bro. 🚀 Current mode: <b>{mode_label}</b>.\n"
@@ -283,18 +328,16 @@ async def cmd_start(message: Message):
             f"Здорова! ❤️ На связи, бро. 🚀 Текущий режим: <b>{mode_label}</b>.\n"
             f"Че как, рассказывай подробно, какие мысли в голове крутятся, давай перетрем за жизнь и планы. 🔥"
         )
-    await message.answer(text, reply_markup=MAIN_MENU, parse_mode="HTML")
+    await callback.message.answer(text, reply_markup=get_main_menu(lang), parse_mode="HTML")
 
 
-@dp.message(F.text.in_({"/reset", "🧹 Сброс"}))
+@dp.message(F.text.in_({"/reset", "🧹 Сброс", "🧹 Reset"}))
 async def cmd_reset(message: Message):
     lang = get_user_lang(message.from_user.id)
     save_history(message.from_user.id, [])
     text = "Memory wiped clean. Locked in, bro. 🌑" if lang == "en" else "Память обнулена. На связи, бро. 🌑"
-    await message.answer(text, reply_markup=MAIN_MENU)
-
-
-@dp.message(F.text.in_({"/lang", "🌐 Язык"}))
+    await message.answer(text, reply_markup=get_main_menu(lang))
+    @dp.message(F.text.in_({"/lang", "🌐 Язык", "🌐 Language"}))
 async def cmd_lang(message: Message):
     lang = get_user_lang(message.from_user.id)
     current_label = "English 🇬🇧" if lang == "en" else "Русский 🇷🇺"
@@ -305,11 +348,11 @@ async def cmd_lang(message: Message):
     await message.answer(text, reply_markup=LANG_KEYBOARD, parse_mode="HTML")
 
 
-@dp.message(F.text.in_({"/mode", "🎭 Режимы"}))
+@dp.message(F.text.in_({"/mode", "🎭 Режимы", "🎭 Modes"}))
 async def cmd_mode(message: Message):
-    rec = get_user_record(message.from_user.id)
-    lang = rec["lang"]
-    current_mode_label = get_mode_label(rec["mode"], lang)
+    rec = get_user_record(message.from_user.id) or {}
+    lang = rec.get("lang", "ru")
+    current_mode_label = get_mode_label(rec.get("mode", DEFAULT_MODE), lang)
     if lang == "en":
         text = (
             f"Current mode: <b>{current_mode_label}</b>\n"
@@ -323,14 +366,17 @@ async def cmd_mode(message: Message):
     await message.answer(text, reply_markup=MODE_KEYBOARD, parse_mode="HTML")
 
 
-@dp.message(F.text == "⚡️ Инфо")
+@dp.message(F.text.in_({"/info", "⚡️ Инфо", "⚡️ Info"}))
 async def cmd_info(message: Message):
     user_id = message.from_user.id
-    rec = get_user_record(user_id)
-    lang_label = "English 🇬🇧" if rec["lang"] == "en" else "Русский 🇷🇺"
-    mode_label = get_mode_label(rec["mode"], rec["lang"])
-    msg_count = len(rec["history"])
-    if rec["lang"] == "en":
+    rec = get_user_record(user_id) or {}
+    lang = rec.get("lang", "ru")
+    mode = rec.get("mode", DEFAULT_MODE)
+    history = rec.get("history", [])
+    lang_label = "English 🇬🇧" if lang == "en" else "Русский 🇷🇺"
+    mode_label = get_mode_label(mode, lang)
+    msg_count = len(history)
+    if lang == "en":
         text = (
             f"<b>Bro Mentor Status</b> 🔥\n"
             f"Language: <b>{lang_label}</b>\n"
@@ -346,7 +392,7 @@ async def cmd_info(message: Message):
             f"Сообщений в памяти: <b>{msg_count}/{MAX_HISTORY}</b>\n"
             f"Команды: /start, /lang, /mode, /reset"
         )
-    await message.answer(text, reply_markup=MAIN_MENU, parse_mode="HTML")
+    await message.answer(text, reply_markup=get_main_menu(lang), parse_mode="HTML")
 
 
 @dp.callback_query(F.data.in_({"lang_ru", "lang_en"}))
@@ -362,6 +408,7 @@ async def process_lang_callback(callback: CallbackQuery):
 
     await callback.answer(toast_text)
     await callback.message.edit_text(confirm_text, parse_mode="HTML")
+    await callback.message.answer("👇", reply_markup=get_main_menu(new_lang))
 
 
 @dp.callback_query(F.data.in_({"mode_support", "mode_bro", "mode_mentor"}))
@@ -390,11 +437,10 @@ async def process_mode_callback(callback: CallbackQuery):
 @dp.message(F.text)
 async def chat_with_ai(message: Message):
     user_id = message.from_user.id
-    rec = get_user_record(user_id)
-    lang = rec["lang"]
-    mode = rec["mode"]
-    history = rec["history"]
-
+    rec = get_user_record(user_id) or {}
+    lang = rec.get("lang", "ru")
+    mode = rec.get("mode", DEFAULT_MODE)
+    history = list(rec.get("history", []))
     history.append({"role": "user", "content": message.text})
     history = history[-MAX_HISTORY:]
 
@@ -414,9 +460,9 @@ async def chat_with_ai(message: Message):
         history = history[-MAX_HISTORY:]
         save_history(user_id, history)
 
-        await message.answer(reply, reply_markup=MAIN_MENU)
+        await message.answer(reply, reply_markup=get_main_menu(lang))
     except Exception as e:
-        await message.answer(f"Ошибка: {e}", reply_markup=MAIN_MENU)
+        await message.answer(f"Ошибка: {e}", reply_markup=get_main_menu(lang))
 
 
 async def main():
@@ -427,3 +473,8 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+    
+    
+    
+                
+    
