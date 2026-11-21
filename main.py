@@ -135,7 +135,7 @@ def load_db():
             print(f"❌ Ошибка чтения файла памяти: {e}")
             return {}
     return {}
-    def save_db(data):
+def save_db(data):
     try:
         with open(DB_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
