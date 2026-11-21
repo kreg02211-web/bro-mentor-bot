@@ -46,7 +46,7 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher()
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-MAX_HISTORY = 12
+MAX_HISTORY = 40
 DB_FILE = "chat_memory.json"
 
 VALID_MODES = ("support", "bro", "mentor")
