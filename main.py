@@ -337,7 +337,7 @@ async def cmd_reset(message: Message):
     save_history(message.from_user.id, [])
     text = "Memory wiped clean. Locked in, bro. 🌑" if lang == "en" else "Память обнулена. На связи, бро. 🌑"
     await message.answer(text, reply_markup=get_main_menu(lang))
-    @dp.message(F.text.in_({"/lang", "🌐 Язык", "🌐 Language"}))
+@dp.message(F.text.in_({"/lang", "🌐 Язык", "🌐 Language"}))
 async def cmd_lang(message: Message):
     lang = get_user_lang(message.from_user.id)
     current_label = "English 🇬🇧" if lang == "en" else "Русский 🇷🇺"
