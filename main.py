@@ -18,6 +18,8 @@ from aiogram.types import (
     KeyboardButton,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
+    LabeledPrice,
+    PreCheckoutQuery,
 )
 from groq import Groq
 
@@ -58,6 +60,12 @@ DB_FILE = "chat_memory.json"
 
 VALID_MODES = ("support", "bro", "mentor")
 DEFAULT_MODE = "bro"
+
+STAR_PACKS = {
+    "buy_100": {"requests": 100, "stars": 150, "label": "100 запросов — 150 ⭐️"},
+    "buy_200": {"requests": 200, "stars": 250, "label": "200 запросов — 250 ⭐️"},
+    "buy_500": {"requests": 500, "stars": 500, "label": "500 запросов — 500 ⭐️"},
+}
 
 
 class OnboardingSurvey(StatesGroup):
@@ -105,9 +113,9 @@ MODE_KEYBOARD = InlineKeyboardMarkup(
 
 BUY_REQUESTS_KEYBOARD = InlineKeyboardMarkup(
     inline_keyboard=[
-        [InlineKeyboardButton(text="100🧾-5💲", callback_data="buy_100")],
-        [InlineKeyboardButton(text="200🧾-7💲", callback_data="buy_200")],
-        [InlineKeyboardButton(text="500🧾-17💲", callback_data="buy_500")],
+        [InlineKeyboardButton(text="100 🧾 — 150 ⭐️", callback_data="buy_100")],
+        [InlineKeyboardButton(text="200 🧾 — 250 ⭐️", callback_data="buy_200")],
+        [InlineKeyboardButton(text="500 🧾 — 500 ⭐️", callback_data="buy_500")],
     ]
 )
 
@@ -229,7 +237,13 @@ def get_user_record(user_id):
             msg for msg in raw
             if isinstance(msg, dict) and msg.get("role") in ["user", "assistant"]
         ]
-        return {"lang": "ru", "mode": DEFAULT_MODE, "profile": {}, "history": clean}
+        return {
+            "lang": "ru",
+            "mode": DEFAULT_MODE,
+            "profile": {},
+            "requests_balance": 0,
+            "history": clean,
+        }
 
     if isinstance(raw, dict):
         lang = raw.get("lang", "ru")
@@ -241,14 +255,29 @@ def get_user_record(user_id):
         profile = raw.get("profile", {})
         if not isinstance(profile, dict):
             profile = {}
+        requests_balance = raw.get("requests_balance", 0)
+        if not isinstance(requests_balance, int):
+            requests_balance = 0
         hist = raw.get("history", [])
         clean = [
             msg for msg in hist
             if isinstance(msg, dict) and msg.get("role") in ["user", "assistant"]
         ]
-        return {"lang": lang, "mode": mode, "profile": profile, "history": clean}
+        return {
+            "lang": lang,
+            "mode": mode,
+            "profile": profile,
+            "requests_balance": requests_balance,
+            "history": clean,
+        }
 
-    return {"lang": "ru", "mode": DEFAULT_MODE, "profile": {}, "history": []}
+    return {
+        "lang": "ru",
+        "mode": DEFAULT_MODE,
+        "profile": {},
+        "requests_balance": 0,
+        "history": [],
+    }
 
 
 def get_history(user_id):
@@ -272,6 +301,7 @@ def save_history(user_id, history):
         "lang": current.get("lang", "ru"),
         "mode": current.get("mode", DEFAULT_MODE),
         "profile": current.get("profile", {}),
+        "requests_balance": current.get("requests_balance", 0),
         "history": clean,
     }
     save_db(db)
@@ -286,10 +316,28 @@ def save_user_profile(user_id, profile_data: dict):
         "lang": current.get("lang", "ru"),
         "mode": current.get("mode", DEFAULT_MODE),
         "profile": profile_data,
+        "requests_balance": current.get("requests_balance", 0),
         "history": current.get("history", []),
     }
     save_db(db)
     print(f"🧬 Вечный профиль сохранён для {user_id}: {profile_data}")
+
+
+def add_user_requests(user_id, amount: int) -> int:
+    db = load_db()
+    user_str = str(user_id)
+    current = get_user_record(user_id) or {}
+    new_balance = current.get("requests_balance", 0) + amount
+    db[user_str] = {
+        "lang": current.get("lang", "ru"),
+        "mode": current.get("mode", DEFAULT_MODE),
+        "profile": current.get("profile", {}),
+        "requests_balance": new_balance,
+        "history": current.get("history", []),
+    }
+    save_db(db)
+    print(f"🧾 Баланс запросов для {user_id} пополнен на +{amount}: теперь {new_balance}")
+    return new_balance
 
 
 def get_user_lang(user_id):
@@ -306,6 +354,7 @@ def set_user_lang(user_id, lang):
         "lang": lang,
         "mode": current.get("mode", DEFAULT_MODE),
         "profile": current.get("profile", {}),
+        "requests_balance": current.get("requests_balance", 0),
         "history": current.get("history", []),
     }
     save_db(db)
@@ -326,6 +375,7 @@ def set_user_mode(user_id, mode):
         "lang": current.get("lang", "ru"),
         "mode": mode,
         "profile": current.get("profile", {}),
+        "requests_balance": current.get("requests_balance", 0),
         "history": current.get("history", []),
     }
     save_db(db)
@@ -341,13 +391,21 @@ def build_system_prompt(lang: str, mode: str = DEFAULT_MODE, profile: dict | Non
 
     if lang == "en":
         effective_bot_name = bot_name if bot_name else "Gauter"
+        base = (
+            f"You are {effective_bot_name}, an older bro and real mentor. Keep it raw, grounded, and natural — "
+            "no cringey roleplay or stiff AI tone. Write thorough, punchy, conversational replies like "
+            "two real guys talking shop, training, mindset, and life. Always break long replies into "
+            "3-4 clean paragraphs so it reads easily. Use relevant emojis naturally where they fit "
+            "(fire, weights, skulls, rockets), and avoid markdown bullet lists, headers, or asterisks. "
+            "Always reply strictly in English."
+        )
         profile_lines = []
         if bot_name:
             profile_lines.append(f"Your name in this chat is '{bot_name}'.")
         if user_name:
             profile_lines.append(
                 f"The user wants to be called '{user_name}' — use this name naturally in conversation, "
-                "without forcing it into every sentence."
+                "but do not force it into every single sentence."
             )
         if interests or problems:
             profile_lines.append(
@@ -359,35 +417,37 @@ def build_system_prompt(lang: str, mode: str = DEFAULT_MODE, profile: dict | Non
                 profile_lines.append(f"Interests/hobbies: {interests}.")
             if problems:
                 profile_lines.append(f"Goals/struggles: {problems}.")
+
         profile_block = (" " + " ".join(profile_lines)) if profile_lines else ""
 
-        mode_prompts = {
+        mode_focus = {
+            "support": (
+                " Current focus mode: SUPPORT. Shift your angle to calm grounding, emotional backup, "
+                "and taking pressure off without judgment. Help the user breathe, unpack stress or "
+                "setbacks, and feel backed up while staying real."
+            ),
             "bro": (
-                f"You are {effective_bot_name}, a laid-back close buddy. Talk like two real friends hanging out — "
-                "chill, witty, zero preaching, zero lectures, and zero pressure. React naturally, joke around "
-                "when it fits, share genuine thoughts on equal footing, and keep the vibe light and real. "
-                "Break replies into 3-4 easy paragraphs, use lively emojis naturally (🔥, 💀, 🚀, 😎), "
-                "and avoid markdown lists, headers, or asterisks. Reply strictly in English."
+                " Current focus mode: JUST BRO. Shift your angle to laid-back, genuine buddy talk — "
+                "trading thoughts, training, everyday life, banter, and real ideas without heavy pressure."
             ),
             "mentor": (
-                f"You are {effective_bot_name}, a sharp, cold-headed mentor and strategist. Zero sugarcoating, "
-                "zero soft talk, and zero empty hype. Cut straight through excuses, analyze the situation "
-                "logically, and give clear, concrete steps to execute right now. Keep sentences punchy, direct, "
-                "and disciplined. Break replies into 3-4 tight paragraphs, use minimal emojis (only 🎯, ⚡️, 🔥 "
-                "sparingly), and avoid markdown lists, headers, or asterisks. Reply strictly in English."
-            ),
-            "support": (
-                f"You are {effective_bot_name}, a calm, grounded, deeply supportive older brother. Your #1 job "
-                "is to take the weight off the user's chest without judging, lecturing, or pushing them to 'hustle' "
-                "right away. Validate what they feel, help them breathe and slow down the spiral in their head, "
-                "and offer steady emotional backup. Write warmly and calmly in 3-4 gentle paragraphs, use soft "
-                "grounded emojis sparingly (🤝, ❤️, 🌑), and avoid markdown lists, headers, or asterisks. "
-                "Reply strictly in English."
+                " Current focus mode: MENTOR. Shift your angle to sharp accountability, structured "
+                "next steps, discipline, and honest critique. Call out excuses directly and push clear "
+                "actionable moves."
             ),
         }
-        return mode_prompts.get(mode, mode_prompts[DEFAULT_MODE]) + profile_block
+        return base + profile_block + mode_focus.get(mode, mode_focus[DEFAULT_MODE])
 
     effective_bot_name = bot_name if bot_name else "Гаутер"
+    base = (
+        f"Ты — {effective_bot_name}, старший кореш и бро. Живой пацан, без шизы, ботов и ролевых игр. "
+        "ОБЩЕНИЕ КАК НАДО: Пиши максимально развернуто, объемно и сочно, в стиле живого разговора "
+        "двух реальных корешей. ОБЯЗАТЕЛЬНО разделяй текст на 3-4 аккуратных абзаца, чтобы он легко "
+        "читался и детально разбирал все темы. Насыпай к месту много живых эмодзи (огонь, дым, черепа, "
+        "бро, ракеты), чтобы они заменяли стикеры и создавали движ. Никаких сухих отписок, списков, "
+        "лекций, звездочек и решеток. Разбирай темы подробно, рассуждай, спорь и поддерживай "
+        "по-братски. Отвечай строго на русском языке."
+    )
     profile_lines = []
     if bot_name:
         profile_lines.append(f"Твоё имя в этом чате — «{bot_name}».")
@@ -406,32 +466,26 @@ def build_system_prompt(lang: str, mode: str = DEFAULT_MODE, profile: dict | Non
             profile_lines.append(f"Увлечения: {interests}.")
         if problems:
             profile_lines.append(f"Цели/проблемы: {problems}.")
+
     profile_block = (" " + " ".join(profile_lines)) if profile_lines else ""
 
-    mode_prompts = {
+    mode_focus = {
+        "support": (
+            " Текущий угол подачи — ПОДДЕРЖКА: смести фокус на то, чтобы вывезти, успокоить, снять "
+            "лишний груз и поддержать без осуждения. Дай человеку выдохнуть, разложи то, что давит "
+            "или пошло не так, и дай опору."
+        ),
         "bro": (
-            f"Ты — {effective_bot_name}, свой пацан и кореш на расслабоне. Общайся максимально живо, легко "
-            "и на равных, как на кухне или после катки: без нотаций, моралей, умняков и давления. Подкалывай "
-            "по-доброму, шути, рассуждай в кайф и создавай движ. Разделяй ответ на 3-4 лёгких абзаца, "
-            "насыпай живые эмодзи к месту (🔥, 💀, 🚀, 😎), без списков, звёздочек и решёток. "
-            "Отвечай строго на русском языке."
+            " Текущий угол подачи — ПРОСТО БРО: смести фокус на живой, непринужденный базар по душам "
+            "и за жизнь — мысли, тренировки, бытовуха, приколы и идеи на равных без лишнего официоза."
         ),
         "mentor": (
-            f"Ты — {effective_bot_name}, жёсткий, холодный наставник и стратег. Никакого сюсюканья, жалости "
-            "и воды. Сразу руби отмазки, включай холодную голову, раскладывай ситуацию по фактам и давай "
-            "чёткий вектор действий: что делать прямо сейчас и куда бить. Пиши собранно, плотно и по делу "
-            "в 3-4 чётких абзаца, эмодзи используй по минимуму (только 🎯, ⚡️, 🔥 точечно), без списков, "
-            "звёздочек и решёток. Отвечай строго на русском языке."
-        ),
-        "support": (
-            f"Ты — {effective_bot_name}, спокойный, тёплый старший брат, который умеет выслушать и снять груз. "
-            "Твоя главная задача — не лечить жизнь и не гнать вперёд с пинка, а дать человеку выдохнуть, "
-            "показать, что его состояние нормально и он не один, и мягко разложить кашу в голове без осуждения. "
-            "Пиши ровно, душевно и спокойно в 3-4 абзаца, минимум эмодзи (только 🤝, ❤️, 🌑 к месту), "
-            "без списков, звёздочек и решёток. Отвечай строго на русском языке."
+            " Текущий угол подачи — НАСТАВНИК: смести фокус на жесткий, собранный разбор планов, "
+            "дисциплины, ошибок и конкретных шагов. Без сюсюканья — по делу, с трезвым взглядом и "
+            "четким вектором действий."
         ),
     }
-    return mode_prompts.get(mode, mode_prompts[DEFAULT_MODE]) + profile_block
+    return base + profile_block + mode_focus.get(mode, mode_focus[DEFAULT_MODE])
 
 
 ACTIVE_MODEL = "openai/gpt-oss-120b"
@@ -700,6 +754,7 @@ async def cmd_info(message: Message):
     mode = rec.get("mode", DEFAULT_MODE)
     history = rec.get("history", [])
     profile = rec.get("profile") or {}
+    requests_balance = rec.get("requests_balance", 0)
     lang_label = "English 🇬🇧" if lang == "en" else "Русский 🇷🇺"
     mode_label = get_mode_label(mode, lang)
     msg_count = len(history)
@@ -710,6 +765,7 @@ async def cmd_info(message: Message):
             f"Language: <b>{lang_label}</b>\n"
             f"Mode: <b>{mode_label}</b>\n"
             f"Profile memory: <b>{profile_status}</b>\n"
+            f"Paid requests balance: <b>{requests_balance} 🧾</b>\n"
             f"Saved messages in memory: <b>{msg_count}/{MAX_HISTORY}</b>"
         )
     else:
@@ -719,6 +775,7 @@ async def cmd_info(message: Message):
             f"Язык: <b>{lang_label}</b>\n"
             f"Режим: <b>{mode_label}</b>\n"
             f"Анкета в памяти: <b>{profile_status}</b>\n"
+            f"Баланс запросов: <b>{requests_balance} 🧾</b>\n"
             f"Сообщений в памяти: <b>{msg_count}/{MAX_HISTORY}</b>"
         )
     await message.answer(text, reply_markup=get_main_menu(lang), parse_mode="HTML")
@@ -727,25 +784,69 @@ async def cmd_info(message: Message):
 @dp.message(F.text.in_({"💳 Запросы", "💳 Requests"}))
 async def cmd_buy_requests(message: Message):
     lang = get_user_lang(message.from_user.id)
-    text = "💳 Выбери пакет запросов:" if lang == "ru" else "💳 Choose a request pack:"
+    text = (
+        "⭐️ Выбери пакет запросов в Telegram Stars:"
+        if lang == "ru"
+        else "⭐️ Choose a request pack in Telegram Stars:"
+    )
     await message.answer(text, reply_markup=BUY_REQUESTS_KEYBOARD)
 
 
 @dp.callback_query(F.data.in_({"buy_100", "buy_200", "buy_500"}))
 async def process_buy_requests_callback(callback: CallbackQuery):
     lang = get_user_lang(callback.from_user.id)
-    packs = {
-        "buy_100": "100🧾-5💲",
-        "buy_200": "200🧾-7💲",
-        "buy_500": "500🧾-17💲",
-    }
-    chosen = packs[callback.data]
-    await callback.answer(chosen)
+    pack = STAR_PACKS[callback.data]
+    await callback.answer(f"{pack['stars']} ⭐️")
+
     if lang == "en":
-        reply_text = f"Selected pack: <b>{chosen}</b>\nPayment service isn't connected yet."
+        title = f"{pack['requests']} Bro Mentor Requests"
+        description = f"Top up your balance with {pack['requests']} messages/photo analyses."
+        price_label = f"{pack['requests']} requests"
     else:
-        reply_text = f"Выбран пакет: <b>{chosen}</b>\nПлатёжный сервис пока не подключён."
-    await callback.message.answer(reply_text, reply_markup=get_main_menu(lang), parse_mode="HTML")
+        title = f"{pack['requests']} запросов Bro Mentor"
+        description = f"Пополнение баланса на {pack['requests']} сообщений или разборов фото."
+        price_label = f"{pack['requests']} запросов"
+
+    await callback.message.answer_invoice
+    title=title,
+        description=description,
+        payload=f"pack_{pack['requests']}",
+        provider_token="",
+        currency="XTR",
+        prices=[LabeledPrice(label=price_label, amount=pack["stars"])],
+    )
+
+
+@dp.pre_checkout_query()
+async def process_pre_checkout(pre_checkout_query: PreCheckoutQuery):
+    await pre_checkout_query.answer(ok=True)
+
+
+@dp.message(F.successful_payment)
+async def process_successful_payment(message: Message):
+    payment = message.successful_payment
+    payload = payment.invoice_payload
+    added_requests = int(payload.split("_")[1])
+    user_id = message.from_user.id
+    lang = get_user_lang(user_id)
+
+    new_balance = add_user_requests(user_id, added_requests)
+    print(
+        f"💰 Оплата Stars от {user_id}: +{added_requests} запросов "
+        f"(баланс: {new_balance}) | ID: {payment.telegram_payment_charge_id}"
+    )
+
+    if lang == "en":
+        text = (
+            f"Payment received! ⭐️🔥 Added <b>+{added_requests} requests</b>.\n"
+            f"Current balance: <b>{new_balance} 🧾</b>"
+        )
+    else:
+        text = (
+            f"Оплата прошла! ⭐️🔥 Начислил <b>+{added_requests} запросов</b>.\n"
+            f"Текущий баланс: <b>{new_balance} 🧾</b>"
+        )
+    await message.answer(text, reply_markup=get_main_menu(lang), parse_mode="HTML")
 
 
 @dp.callback_query(F.data.in_({"lang_ru", "lang_en"}))
@@ -890,4 +991,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
