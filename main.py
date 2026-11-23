@@ -1,5 +1,7 @@
 import os
+import io
 import json
+import base64
 import asyncio
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -334,7 +336,10 @@ def build_system_prompt(lang: str, mode: str = DEFAULT_MODE) -> str:
 
 
 ACTIVE_MODEL = "openai/gpt-oss-120b"
-print(f"Подключена модель: {ACTIVE_MODEL}")
+VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+print(f"Подключена модель: {ACTIVE_MODEL} | Vision: {VISION_MODEL}")
+
+
 @dp.message(F.text == "/start")
 async def cmd_start(message: Message):
     save_history(message.from_user.id, [])
@@ -433,6 +438,8 @@ async def cmd_info(message: Message):
             f"Сообщений в памяти: <b>{msg_count}/{MAX_HISTORY}</b>"
         )
     await message.answer(text, reply_markup=get_main_menu(lang), parse_mode="HTML")
+
+
 @dp.message(F.text.in_({"💳 Запросы", "💳 Requests"}))
 async def cmd_buy_requests(message: Message):
     lang = get_user_lang(message.from_user.id)
@@ -497,6 +504,65 @@ async def process_mode_callback(callback: CallbackQuery):
     await callback.message.edit_text(confirm_text, parse_mode="HTML")
 
 
+@dp.message(F.photo)
+async def chat_with_photo(message: Message):
+    user_id = message.from_user.id
+    rec = get_user_record(user_id) or {}
+    lang = rec.get("lang", "ru")
+    mode = rec.get("mode", DEFAULT_MODE)
+    history = list(rec.get("history", []))
+
+    await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
+    try:
+        photo = message.photo[-1]
+        img_buffer = io.BytesIO()
+        await bot.download(photo, destination=img_buffer)
+        img_b64 = base64.b64encode(img_buffer.getvalue()).decode("utf-8")
+
+        caption = (message.caption or "").strip()
+        prompt_text = (
+            caption
+            if caption
+            else (
+                "Check out this photo, bro, and break down what's going on."
+                if lang == "en"
+                else "Глянь фотку, бро, и разбери по-живому, что тут и к чему."
+            )
+        )
+
+        system_prompt = build_system_prompt(lang, mode)
+        vision_messages = [{"role": "system", "content": system_prompt}] + history[-10:] + [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt_text},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"},
+                    },
+                ],
+            }
+        ]
+
+        response = groq_client.chat.completions.create(
+            model=VISION_MODEL,
+            messages=vision_messages,
+            temperature=0.5,
+            max_tokens=750,
+        )
+        reply = response.choices[0].message.content
+
+        history_note = f"[Фото: {caption}]" if caption else "[Фото без подписи]"
+        history.append({"role": "user", "content": history_note})
+        history.append({"role": "assistant", "content": reply})
+        history = history[-MAX_HISTORY:]
+        save_history(user_id, history)
+
+        await message.answer(reply, reply_markup=get_main_menu(lang))
+    except Exception as e:
+        await message.answer(f"Ошибка при разборе фото: {e}", reply_markup=get_main_menu(lang))
+
+
 @dp.message(F.text)
 async def chat_with_ai(message: Message):
     user_id = message.from_user.id
@@ -530,7 +596,7 @@ async def chat_with_ai(message: Message):
 
 
 async def main():
-    print("Бот запущен на локальной надежной памяти с выбором языка, режимов и меню!")
+    print("Бот запущен на локальной надежной памяти с выбором языка, режимов, фото и меню!")
     await setup_bot_commands(bot)
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
@@ -538,7 +604,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-    
-
-        
-
