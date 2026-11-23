@@ -807,13 +807,13 @@ async def process_buy_requests_callback(callback: CallbackQuery):
         description = f"Пополнение баланса на {pack['requests']} сообщений или разборов фото."
         price_label = f"{pack['requests']} запросов"
 
-    await callback.message.answer_invoice
-            title=title,
-            description=description,
-            payload=f"pack_{pack['requests']}",
-            provider_token="",
-            currency="XTR",
-            prices=[LabeledPrice(label=price_label, amount=pack["stars"])],
+    await callback.message.answer_invoice(
+        title=title,
+        description=description,
+        payload=f"pack_{pack['requests']}",
+        provider_token="",
+        currency="XTR",
+        prices=[LabeledPrice(label=price_label, amount=pack["stars"])],
     )
 
 
@@ -991,5 +991,6 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
 
