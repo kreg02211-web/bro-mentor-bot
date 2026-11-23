@@ -336,7 +336,7 @@ def build_system_prompt(lang: str, mode: str = DEFAULT_MODE) -> str:
 
 
 ACTIVE_MODEL = "openai/gpt-oss-120b"
-VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+VISION_MODEL = "qwen/qwen3.8-27b"
 print(f"Подключена модель: {ACTIVE_MODEL} | Vision: {VISION_MODEL}")
 
 
@@ -604,3 +604,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
