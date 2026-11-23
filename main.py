@@ -6,6 +6,9 @@ import asyncio
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from aiogram import Bot, Dispatcher, F
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import (
     Message,
     CallbackQuery,
@@ -47,7 +50,7 @@ TOKEN = os.environ.get("TOKEN", "")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
 bot = Bot(token=TOKEN)
-dp = Dispatcher()
+dp = Dispatcher(storage=MemoryStorage())
 groq_client = Groq(api_key=GROQ_API_KEY)
 
 MAX_HISTORY = 40
@@ -56,11 +59,19 @@ DB_FILE = "chat_memory.json"
 VALID_MODES = ("support", "bro", "mentor")
 DEFAULT_MODE = "bro"
 
+
+class OnboardingSurvey(StatesGroup):
+    user_name = State()
+    bot_name = State()
+    interests = State()
+    problems = State()
+
+
 MAIN_MENU = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="🌐 Язык"), KeyboardButton(text="🎭 Режимы")],
         [KeyboardButton(text="🧹 Сброс"), KeyboardButton(text="⚡️ Инфо")],
-        [KeyboardButton(text="💳 Запросы")],
+        [KeyboardButton(text="💳 Запросы"), KeyboardButton(text="🧬 Анкета")],
     ],
     resize_keyboard=True,
     input_field_placeholder="Напиши бро или выбери кнопку...",
@@ -101,13 +112,33 @@ BUY_REQUESTS_KEYBOARD = InlineKeyboardMarkup(
 )
 
 
+def get_survey_offer_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    if lang == "en":
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="🚀 Yes, let's do it", callback_data="survey_yes"),
+                    InlineKeyboardButton(text="⏭ No, skip to chat", callback_data="survey_no"),
+                ]
+            ]
+        )
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🚀 Да, погнали", callback_data="survey_yes"),
+                InlineKeyboardButton(text="⏭ Нет, сразу в чат", callback_data="survey_no"),
+            ]
+        ]
+    )
+
+
 def get_main_menu(lang: str = "ru") -> ReplyKeyboardMarkup:
     if lang == "en":
         return ReplyKeyboardMarkup(
             keyboard=[
                 [KeyboardButton(text="🌐 Language"), KeyboardButton(text="🎭 Modes")],
                 [KeyboardButton(text="🧹 Reset"), KeyboardButton(text="⚡️ Info")],
-                [KeyboardButton(text="💳 Requests")],
+                [KeyboardButton(text="💳 Requests"), KeyboardButton(text="🧬 Profile")],
             ],
             resize_keyboard=True,
             input_field_placeholder="Write to bro or pick a button...",
@@ -116,7 +147,7 @@ def get_main_menu(lang: str = "ru") -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text="🌐 Язык"), KeyboardButton(text="🎭 Режимы")],
             [KeyboardButton(text="🧹 Сброс"), KeyboardButton(text="⚡️ Инфо")],
-            [KeyboardButton(text="💳 Запросы")],
+            [KeyboardButton(text="💳 Запросы"), KeyboardButton(text="🧬 Анкета")],
         ],
         resize_keyboard=True,
         input_field_placeholder="Напиши бро или выбери кнопку...",
@@ -127,17 +158,19 @@ async def setup_bot_commands(target_bot: Bot, chat_id: int | None = None, lang: 
     if lang == "en":
         commands = [
             BotCommand(command="start", description="Restart and choose language"),
+            BotCommand(command="profile", description="View or retake personal survey"),
             BotCommand(command="lang", description="Change language"),
             BotCommand(command="mode", description="Change chat mode"),
-            BotCommand(command="reset", description="Clear chat memory"),
+            BotCommand(command="reset", description="Clear recent chat history"),
             BotCommand(command="info", description="Bot status"),
         ]
     else:
         commands = [
             BotCommand(command="start", description="Перезапуск и выбор языка"),
+            BotCommand(command="profile", description="Моя анкета / пройти опрос заново"),
             BotCommand(command="lang", description="Сменить язык"),
             BotCommand(command="mode", description="Сменить режим общения"),
-            BotCommand(command="reset", description="Очистить память"),
+            BotCommand(command="reset", description="Очистить историю чата"),
             BotCommand(command="info", description="Статус бота"),
         ]
     try:
@@ -196,7 +229,7 @@ def get_user_record(user_id):
             msg for msg in raw
             if isinstance(msg, dict) and msg.get("role") in ["user", "assistant"]
         ]
-        return {"lang": "ru", "mode": DEFAULT_MODE, "history": clean}
+        return {"lang": "ru", "mode": DEFAULT_MODE, "profile": {}, "history": clean}
 
     if isinstance(raw, dict):
         lang = raw.get("lang", "ru")
@@ -205,14 +238,17 @@ def get_user_record(user_id):
         mode = raw.get("mode", DEFAULT_MODE)
         if mode not in VALID_MODES:
             mode = DEFAULT_MODE
+        profile = raw.get("profile", {})
+        if not isinstance(profile, dict):
+            profile = {}
         hist = raw.get("history", [])
         clean = [
             msg for msg in hist
             if isinstance(msg, dict) and msg.get("role") in ["user", "assistant"]
         ]
-        return {"lang": lang, "mode": mode, "history": clean}
+        return {"lang": lang, "mode": mode, "profile": profile, "history": clean}
 
-    return {"lang": "ru", "mode": DEFAULT_MODE, "history": []}
+    return {"lang": "ru", "mode": DEFAULT_MODE, "profile": {}, "history": []}
 
 
 def get_history(user_id):
@@ -235,10 +271,25 @@ def save_history(user_id, history):
     db[user_str] = {
         "lang": current.get("lang", "ru"),
         "mode": current.get("mode", DEFAULT_MODE),
+        "profile": current.get("profile", {}),
         "history": clean,
     }
     save_db(db)
     print(f"💾 Память сохранена для {user_id}: всего сообщений -> {len(clean)}")
+
+
+def save_user_profile(user_id, profile_data: dict):
+    db = load_db()
+    user_str = str(user_id)
+    current = get_user_record(user_id) or {}
+    db[user_str] = {
+        "lang": current.get("lang", "ru"),
+        "mode": current.get("mode", DEFAULT_MODE),
+        "profile": profile_data,
+        "history": current.get("history", []),
+    }
+    save_db(db)
+    print(f"🧬 Вечный профиль сохранён для {user_id}: {profile_data}")
 
 
 def get_user_lang(user_id):
@@ -254,6 +305,7 @@ def set_user_lang(user_id, lang):
     db[user_str] = {
         "lang": lang,
         "mode": current.get("mode", DEFAULT_MODE),
+        "profile": current.get("profile", {}),
         "history": current.get("history", []),
     }
     save_db(db)
@@ -273,22 +325,50 @@ def set_user_mode(user_id, mode):
     db[user_str] = {
         "lang": current.get("lang", "ru"),
         "mode": mode,
+        "profile": current.get("profile", {}),
         "history": current.get("history", []),
     }
     save_db(db)
     print(f"🎭 Режим для {user_id} изменён на: {mode}")
 
 
-def build_system_prompt(lang: str, mode: str = DEFAULT_MODE) -> str:
+def build_system_prompt(lang: str, mode: str = DEFAULT_MODE, profile: dict | None = None) -> str:
+    profile = profile or {}
+    user_name = profile.get("user_name", "").strip()
+    bot_name = profile.get("bot_name", "").strip()
+    interests = profile.get("interests", "").strip()
+    problems = profile.get("problems", "").strip()
+
     if lang == "en":
+        effective_bot_name = bot_name if bot_name else "Gauter"
         base = (
-            "You are Gauter, an older bro and real mentor. Keep it raw, grounded, and natural — "
+            f"You are {effective_bot_name}, an older bro and real mentor. Keep it raw, grounded, and natural — "
             "no cringey roleplay or stiff AI tone. Write thorough, punchy, conversational replies like "
             "two real guys talking shop, training, mindset, and life. Always break long replies into "
             "3-4 clean paragraphs so it reads easily. Use relevant emojis naturally where they fit "
             "(fire, weights, skulls, rockets), and avoid markdown bullet lists, headers, or asterisks. "
             "Always reply strictly in English."
         )
+        profile_lines = []
+        if bot_name:
+            profile_lines.append(f"Your name in this chat is '{bot_name}'.")
+        if user_name:
+            profile_lines.append(
+                f"The user wants to be called '{user_name}' — use this name naturally in conversation, "
+                "but do not force it into every single sentence."
+            )
+        if interests or problems:
+            profile_lines.append(
+                "Background info from the user's profile (keep in memory, NEVER bring up unprompted "
+                "on casual greetings or unrelated messages; only mention or use it when relevant to the "
+                "topic or when the user asks/brings it up):"
+            )
+            if interests:
+                profile_lines.append(f"Interests/hobbies: {interests}.")
+            if problems:
+                profile_lines.append(f"Goals/struggles: {problems}.")
+        profile_block = (" " + " ".join(profile_lines)) if profile_lines else ""
+
         mode_focus = {
             "support": (
                 " Current focus mode: SUPPORT. Shift your angle to calm grounding, emotional backup, "
@@ -305,10 +385,11 @@ def build_system_prompt(lang: str, mode: str = DEFAULT_MODE) -> str:
                 "actionable moves."
             ),
         }
-        return base + mode_focus.get(mode, mode_focus[DEFAULT_MODE])
+        return base + profile_block + mode_focus.get(mode, mode_focus[DEFAULT_MODE])
 
+    effective_bot_name = bot_name if bot_name else "Гаутер"
     base = (
-        "Ты — Гаутер, старший кореш и бро. Живой пацан, без шизы, ботов и ролевых игр. "
+        f"Ты — {effective_bot_name}, старший кореш и бро. Живой пацан, без шизы, ботов и ролевых игр. "
         "ОБЩЕНИЕ КАК НАДО: Пиши максимально развернуто, объемно и сочно, в стиле живого разговора "
         "двух реальных корешей. ОБЯЗАТЕЛЬНО разделяй текст на 3-4 аккуратных абзаца, чтобы он легко "
         "читался и детально разбирал все темы. Насыпай к месту много живых эмодзи (огонь, дым, черепа, "
@@ -316,6 +397,26 @@ def build_system_prompt(lang: str, mode: str = DEFAULT_MODE) -> str:
         "лекций, звездочек и решеток. Разбирай темы подробно, рассуждай, спорь и поддерживай "
         "по-братски. Отвечай строго на русском языке."
     )
+    profile_lines = []
+    if bot_name:
+        profile_lines.append(f"Твоё имя в этом чате — «{bot_name}».")
+    if user_name:
+        profile_lines.append(
+            f"Пользователя зовут «{user_name}» — обращайся к нему по этому имени естественно, "
+            "но не пихай его в каждую фразу насильно."
+        )
+    if interests or problems:
+        profile_lines.append(
+            "Фоновая инфа из анкеты пользователя (храни в памяти, НЕ вываливай без повода на "
+            "обычное приветствие или левые темы; поднимай и учитывай только когда это реально в тему "
+            "разговора или когда пользователь сам спросит/напомнит):"
+        )
+        if interests:
+            profile_lines.append(f"Увлечения: {interests}.")
+        if problems:
+            profile_lines.append(f"Цели/проблемы: {problems}.")
+    profile_block = (" " + " ".join(profile_lines)) if profile_lines else ""
+
     mode_focus = {
         "support": (
             " Текущий угол подачи — ПОДДЕРЖКА: смести фокус на то, чтобы вывезти, успокоить, снять "
@@ -332,7 +433,7 @@ def build_system_prompt(lang: str, mode: str = DEFAULT_MODE) -> str:
             "четким вектором действий."
         ),
     }
-    return base + mode_focus.get(mode, mode_focus[DEFAULT_MODE])
+    return base + profile_block + mode_focus.get(mode, mode_focus[DEFAULT_MODE])
 
 
 ACTIVE_MODEL = "openai/gpt-oss-120b"
@@ -340,8 +441,23 @@ VISION_MODEL = "qwen/qwen3.8-27b"
 print(f"Подключена модель: {ACTIVE_MODEL} | Vision: {VISION_MODEL}")
 
 
+def get_base_welcome_text(lang: str, mode_label: str, user_name: str = "") -> str:
+    if lang == "en":
+        call_name = user_name if user_name else "bro"
+        return (
+            f"Yo, {call_name}! ❤️ Locked in. 🚀 Current mode: <b>{mode_label}</b>.\n"
+            f"What's good — tell me what's on your mind, training, or plans and let's break it down. 🔥"
+        )
+    call_name = user_name if user_name else "бро"
+    return (
+        f"Здорова, {call_name}! ❤️ На связи. 🚀 Текущий режим: <b>{mode_label}</b>.\n"
+        f"Че как, рассказывай подробно, какие мысли в голове крутятся, давай перетрем за жизнь и планы. 🔥"
+    )
+
+
 @dp.message(F.text == "/start")
-async def cmd_start(message: Message):
+async def cmd_start(message: Message, state: FSMContext):
+    await state.clear()
     save_history(message.from_user.id, [])
     await message.answer(
         "🌐 Выбери язык / Choose language:",
@@ -350,12 +466,11 @@ async def cmd_start(message: Message):
 
 
 @dp.callback_query(F.data.in_({"start_lang_ru", "start_lang_en"}))
-async def process_start_lang_callback(callback: CallbackQuery):
+async def process_start_lang_callback(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
     lang = "en" if callback.data == "start_lang_en" else "ru"
     set_user_lang(callback.from_user.id, lang)
     await setup_bot_commands(bot, chat_id=callback.message.chat.id, lang=lang)
-    rec = get_user_record(callback.from_user.id) or {}
-    mode_label = get_mode_label(rec.get("mode", DEFAULT_MODE), lang)
 
     await callback.answer()
     try:
@@ -364,23 +479,189 @@ async def process_start_lang_callback(callback: CallbackQuery):
         pass
 
     if lang == "en":
-        text = (
-            f"Yo! ❤️ Locked in, bro. 🚀 Current mode: <b>{mode_label}</b>.\n"
-            f"What's good — tell me what's on your mind, training, or plans and let's break it down. 🔥"
+        offer_text = (
+            "Yo! Before we dive in — wanna take a quick, chill 4-question survey so our chats feel more personal? 🎯\n\n"
+            "You'll tell me what to call you, pick my name, and share your hobbies & struggles. "
+            "I'll keep it locked in my memory so I only bring up details when they actually fit the talk. 🔥"
         )
     else:
-        text = (
-            f"Здорова! ❤️ На связи, бро. 🚀 Текущий режим: <b>{mode_label}</b>.\n"
-            f"Че как, рассказывай подробно, какие мысли в голове крутятся, давай перетрем за жизнь и планы. 🔥"
+        offer_text = (
+            "Здорова! Слушай, перед тем как залетать в чат — не хочешь пройти быстрый, непринуждённый опрос из 4 вопросов, чтобы общение было ещё кайфовее? 🎯\n\n"
+            "Напишешь, как тебя звать, как называть меня, а также свои увлечения и проблемы. "
+            "Я сохраню это в памяти навеки, но без лишних вбросов — буду поднимать по делу или когда сам спросишь. 🔥"
         )
+    await callback.message.answer(offer_text, reply_markup=get_survey_offer_keyboard(lang))
+
+
+@dp.callback_query(F.data == "survey_no")
+async def process_survey_no(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    rec = get_user_record(callback.from_user.id) or {}
+    lang = rec.get("lang", "ru")
+    mode_label = get_mode_label(rec.get("mode", DEFAULT_MODE), lang)
+    user_name = (rec.get("profile") or {}).get("user_name", "")
+
+    await callback.answer()
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+
+    text = get_base_welcome_text(lang, mode_label, user_name)
     await callback.message.answer(text, reply_markup=get_main_menu(lang), parse_mode="HTML")
 
 
-@dp.message(F.text.in_({"/reset", "🧹 Сброс", "🧹 Reset"}))
-async def cmd_reset(message: Message):
+@dp.callback_query(F.data == "survey_yes")
+async def process_survey_yes(callback: CallbackQuery, state: FSMContext):
+    lang = get_user_lang(callback.from_user.id)
+    await state.set_state(OnboardingSurvey.user_name)
+
+    await callback.answer()
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+
+    if lang == "en":
+        q1 = "🔥 <b>Question 1/4:</b> How should I call you?"
+    else:
+        q1 = "🔥 <b>Вопрос 1/4:</b> Как мне тебя называть?"
+    await callback.message.answer(q1, parse_mode="HTML")
+
+
+@dp.message(OnboardingSurvey.user_name, F.text)
+async def survey_step_user_name(message: Message, state: FSMContext):
     lang = get_user_lang(message.from_user.id)
+    await state.update_data(user_name=message.text.strip())
+    await state.set_state(OnboardingSurvey.bot_name)
+
+    if lang == "en":
+        q2 = "😎 <b>Question 2/4:</b> How would you like to call me (the bot)?"
+    else:
+        q2 = "😎 <b>Вопрос 2/4:</b> Как бы ты хотел называть меня (бота)?"
+    await message.answer(q2, parse_mode="HTML")
+
+
+@dp.message(OnboardingSurvey.bot_name, F.text)
+async def survey_step_bot_name(message: Message, state: FSMContext):
+    lang = get_user_lang(message.from_user.id)
+    await state.update_data(bot_name=message.text.strip())
+    await state.set_state(OnboardingSurvey.interests)
+
+    if lang == "en":
+        q3 = "🚀 <b>Question 3/4:</b> What are your hobbies and interests?"
+    else:
+        q3 = "🚀 <b>Вопрос 3/4:</b> Какие у тебя увлечения и интересы?"
+    await message.answer(q3, parse_mode="HTML")
+
+
+@dp.message(OnboardingSurvey.interests, F.text)
+async def survey_step_interests(message: Message, state: FSMContext):
+    lang = get_user_lang(message.from_user.id)
+    await state.update_data(interests=message.text.strip())
+    await state.set_state(OnboardingSurvey.problems)
+
+    if lang == "en":
+        q4 = "🎯 <b>Question 4/4:</b> What problems, challenges, or goals are on your mind right now?"
+    else:
+        q4 = "🎯 <b>Вопрос 4/4:</b> Какие у тебя сейчас проблемы, затыки или цели?"
+    await message.answer(q4, parse_mode="HTML")
+
+
+@dp.message(OnboardingSurvey.problems, F.text)
+async def survey_step_problems(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    rec = get_user_record(user_id) or {}
+    lang = rec.get("lang", "ru")
+    mode_label = get_mode_label(rec.get("mode", DEFAULT_MODE), lang)
+
+    data = await state.get_data()
+    profile_data = {
+        "user_name": data.get("user_name", ""),
+        "bot_name": data.get("bot_name", ""),
+        "interests": data.get("interests", ""),
+        "problems": message.text.strip(),
+    }
+    save_user_profile(user_id, profile_data)
+    await state.clear()
+
+    if lang == "en":
+        done_text = (
+            f"Got it, <b>{profile_data['user_name']}</b>! 🧬🔥\n\n"
+            f"I'll keep this profile in memory forever (even after resetting chat history), "
+            f"call you by your name naturally, and only bring up hobbies or problems when relevant or when you ask. "
+            f"Current mode: <b>{mode_label}</b>. What's good?"
+        )
+    else:
+        done_text = (
+            f"Принято, <b>{profile_data['user_name']}</b>! 🧬🔥\n\n"
+            f"Записал это в память навеки — даже при сбросе истории чата ничего не сотру. "
+            f"Имя буду подхватывать естественно, а увлечения и проблемы буду поднимать только по делу или когда сам спросишь. "
+            f"Текущий режим: <b>{mode_label}</b>. Че как, погнали?"
+        )
+    await message.answer(done_text, reply_markup=get_main_menu(lang), parse_mode="HTML")
+
+
+@dp.message(F.text.in_({"/profile", "🧬 Анкета", "🧬 Profile"}))
+async def cmd_profile(message: Message, state: FSMContext):
+    await state.clear()
+    rec = get_user_record(message.from_user.id) or {}
+    lang = rec.get("lang", "ru")
+    profile = rec.get("profile") or {}
+
+    if not profile:
+        text = (
+            "Анкета ещё не заполнена. Хочешь пройти мини-опрос сейчас? 🎯"
+            if lang == "ru"
+            else "Profile isn't filled out yet. Wanna take the quick survey now? 🎯"
+        )
+        await message.answer(text, reply_markup=get_survey_offer_keyboard(lang))
+        return
+
+    retake_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔄 Пройти заново" if lang == "ru" else "🔄 Retake survey",
+                    callback_data="survey_yes",
+                )
+            ]
+        ]
+    )
+
+    if lang == "en":
+        text = (
+            f"<b>🧬 Your Saved Profile:</b>\n\n"
+            f"👤 Name: <b>{profile.get('user_name', '-')}</b>\n"
+            f"🤖 Bot name: <b>{profile.get('bot_name', '-')}</b>\n"
+            f"🚀 Interests: <b>{profile.get('interests', '-')}</b>\n"
+            f"🎯 Problems / Goals: <b>{profile.get('problems', '-')}</b>"
+        )
+    else:
+        text = (
+            f"<b>🧬 Твоя анкета:</b>\n\n"
+            f"👤 Имя: <b>{profile.get('user_name', '-')}</b>\n"
+            f"🤖 Имя бота: <b>{profile.get('bot_name', '-')}</b>\n"
+            f"🚀 Увлечения: <b>{profile.get('interests', '-')}</b>\n"
+            f"🎯 Проблемы / Цели: <b>{profile.get('problems', '-')}</b>"
+        )
+    await message.answer(text, reply_markup=retake_kb, parse_mode="HTML")
+
+
+@dp.message(F.text.in_({"/reset", "🧹 Сброс", "🧹 Reset"}))
+async def cmd_reset(message: Message, state: FSMContext):
+    await state.clear()
+    rec = get_user_record(message.from_user.id) or {}
+    lang = rec.get("lang", "ru")
+    user_name = (rec.get("profile") or {}).get("user_name", "")
     save_history(message.from_user.id, [])
-    text = "Memory wiped clean. Locked in, bro. 🌑" if lang == "en" else "Память обнулена. На связи, бро. 🌑"
+
+    if lang == "en":
+        call_name = f", {user_name}" if user_name else ", bro"
+        text = f"Chat history wiped clean{call_name} (your saved profile stays intact). 🌑"
+    else:
+        call_name = f", {user_name}" if user_name else ", бро"
+        text = f"История чата очищена{call_name} (анкета в памяти сохранена, ничего не забыл). 🌑"
     await message.answer(text, reply_markup=get_main_menu(lang))
 
 
@@ -420,21 +701,26 @@ async def cmd_info(message: Message):
     lang = rec.get("lang", "ru")
     mode = rec.get("mode", DEFAULT_MODE)
     history = rec.get("history", [])
+    profile = rec.get("profile") or {}
     lang_label = "English 🇬🇧" if lang == "en" else "Русский 🇷🇺"
     mode_label = get_mode_label(mode, lang)
     msg_count = len(history)
     if lang == "en":
+        profile_status = "✅ Saved" if profile else "❌ Not filled"
         text = (
             f"<b>Bro Mentor Status</b> 🔥\n"
             f"Language: <b>{lang_label}</b>\n"
             f"Mode: <b>{mode_label}</b>\n"
+            f"Profile memory: <b>{profile_status}</b>\n"
             f"Saved messages in memory: <b>{msg_count}/{MAX_HISTORY}</b>"
         )
     else:
+        profile_status = "✅ Сохранена" if profile else "❌ Не заполнена"
         text = (
             f"<b>Статус Bro Mentor</b> 🔥\n"
             f"Язык: <b>{lang_label}</b>\n"
             f"Режим: <b>{mode_label}</b>\n"
+            f"Анкета в памяти: <b>{profile_status}</b>\n"
             f"Сообщений в памяти: <b>{msg_count}/{MAX_HISTORY}</b>"
         )
     await message.answer(text, reply_markup=get_main_menu(lang), parse_mode="HTML")
@@ -510,6 +796,7 @@ async def chat_with_photo(message: Message):
     rec = get_user_record(user_id) or {}
     lang = rec.get("lang", "ru")
     mode = rec.get("mode", DEFAULT_MODE)
+    profile = rec.get("profile", {})
     history = list(rec.get("history", []))
 
     await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
@@ -530,7 +817,7 @@ async def chat_with_photo(message: Message):
             )
         )
 
-        system_prompt = build_system_prompt(lang, mode)
+        system_prompt = build_system_prompt(lang, mode, profile)
         vision_messages = [{"role": "system", "content": system_prompt}] + history[-10:] + [
             {
                 "role": "user",
@@ -569,6 +856,7 @@ async def chat_with_ai(message: Message):
     rec = get_user_record(user_id) or {}
     lang = rec.get("lang", "ru")
     mode = rec.get("mode", DEFAULT_MODE)
+    profile = rec.get("profile", {})
     history = list(rec.get("history", []))
 
     history.append({"role": "user", "content": message.text})
@@ -576,7 +864,7 @@ async def chat_with_ai(message: Message):
 
     await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
     try:
-        system_prompt = build_system_prompt(lang, mode)
+        system_prompt = build_system_prompt(lang, mode, profile)
         messages_payload = [{"role": "system", "content": system_prompt}] + history
         response = groq_client.chat.completions.create(
             model=ACTIVE_MODEL,
@@ -596,7 +884,7 @@ async def chat_with_ai(message: Message):
 
 
 async def main():
-    print("Бот запущен на локальной надежной памяти с выбором языка, режимов, фото и меню!")
+    print("Бот запущен на локальной надежной памяти с выбором языка, режимов, фото, анкетой и меню!")
     await setup_bot_commands(bot)
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
@@ -604,4 +892,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
