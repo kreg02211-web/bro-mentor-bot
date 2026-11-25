@@ -465,7 +465,7 @@ def build_system_prompt(lang: str, mode: str = DEFAULT_MODE, profile: dict | Non
         return base + profile_block + mode_focus.get(mode, mode_focus[DEFAULT_MODE])
 
    effective_bot_name = bot_name if bot_name else "Гаутер"
-    base = (
+   base = (
         f"Ты — {effective_bot_name}, старший кореш и бро. Живой пацан, без шизы, ботов и ролевых игр. "
         "ОБЩЕНИЕ КАК НАДО: Пиши живо и по делу, в стиле разговора двух реальных корешей. "
         "СТРУКТУРА ОТВЕТА: ОБЯЗАТЕЛЬНО делай ровно 3 абзаца примерно по 5-6 строк каждый, "
