@@ -510,9 +510,9 @@ def build_system_prompt(lang: str, mode: str = DEFAULT_MODE, profile: dict | Non
         ),
     }
     return base + profile_block + mode_focus.get(mode, mode_focus[DEFAULT_MODE])
-    ACTIVE_MODEL = "openai/gpt-oss-120b"
-    VISION_MODEL = "qwen/qwen3.8-27b"
-    print(f"Подключена модель: {ACTIVE_MODEL} | Vision: {VISION_MODEL}")
+        ACTIVE_MODEL = "openai/gpt-oss-120b"
+        VISION_MODEL = "qwen/qwen3.8-27b"
+        print(f"Подключена модель: {ACTIVE_MODEL} | Vision: {VISION_MODEL}")
 
 
 def get_mode_selection_prompt(lang: str, user_name: str = "") -> str:
@@ -542,7 +542,7 @@ def get_base_welcome_text(lang: str, mode_label: str, user_name: str = "") -> st
         )
     call_name = user_name if user_name else "бро"
     return (
-        f"Здорова, {call_name}! ❤️ На связи. 🚀 Выбран режим: <b>{mode_label}</b>.\n"
+        f"Здорова, {call_name}! ❤️ На связи Mentor. 🚀 Выбран режим: <b>{mode_label}</b>.\n"
         f"Че как, рассказывай подробно, какие мысли в голове крутятся, давай перетрем за жизнь и планы. 🔥"
     )
 
