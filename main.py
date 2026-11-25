@@ -57,6 +57,7 @@ groq_client = Groq(api_key=GROQ_API_KEY)
 
 MAX_HISTORY = 40
 DB_FILE = "chat_memory.json"
+FREE_REQUESTS = 10
 
 VALID_MODES = ("support", "bro", "mentor")
 DEFAULT_MODE = "bro"
@@ -108,6 +109,14 @@ MODE_KEYBOARD = InlineKeyboardMarkup(
         [InlineKeyboardButton(text="🤝 Поддержка", callback_data="mode_support")],
         [InlineKeyboardButton(text="😎 Просто бро", callback_data="mode_bro")],
         [InlineKeyboardButton(text="🎯 Наставник", callback_data="mode_mentor")],
+    ]
+)
+
+POST_ONBOARDING_MODE_KEYBOARD = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [InlineKeyboardButton(text="🤝 Поддержка", callback_data="onboard_mode_support")],
+        [InlineKeyboardButton(text="😎 Просто бро", callback_data="onboard_mode_bro")],
+        [InlineKeyboardButton(text="🎯 Наставник", callback_data="onboard_mode_mentor")],
     ]
 )
 
@@ -227,11 +236,7 @@ def save_db(data):
         print(f"❌ Ошибка записи файла памяти: {e}")
 
 
-def get_user_record(user_id):
-    db = load_db()
-    user_str = str(user_id)
-    raw = db.get(user_str)
-
+def normalize_user_record(raw):
     if isinstance(raw, list):
         clean = [
             msg for msg in raw
@@ -241,6 +246,7 @@ def get_user_record(user_id):
             "lang": "ru",
             "mode": DEFAULT_MODE,
             "profile": {},
+            "free_requests": FREE_REQUESTS,
             "requests_balance": 0,
             "history": clean,
         }
@@ -255,6 +261,9 @@ def get_user_record(user_id):
         profile = raw.get("profile", {})
         if not isinstance(profile, dict):
             profile = {}
+        free_requests = raw.get("free_requests")
+        if not isinstance(free_requests, int):
+            free_requests = FREE_REQUESTS
         requests_balance = raw.get("requests_balance", 0)
         if not isinstance(requests_balance, int):
             requests_balance = 0
@@ -267,6 +276,7 @@ def get_user_record(user_id):
             "lang": lang,
             "mode": mode,
             "profile": profile,
+            "free_requests": free_requests,
             "requests_balance": requests_balance,
             "history": clean,
         }
@@ -275,9 +285,49 @@ def get_user_record(user_id):
         "lang": "ru",
         "mode": DEFAULT_MODE,
         "profile": {},
+        "free_requests": FREE_REQUESTS,
         "requests_balance": 0,
         "history": [],
     }
+
+
+def get_user_record(user_id):
+    db = load_db()
+    return normalize_user_record(db.get(str(user_id)))
+
+
+def get_total_messages_left(rec: dict) -> int:
+    return max(0, rec.get("free_requests", 0)) + max(0, rec.get("requests_balance", 0))
+
+
+def consume_one_message(user_id) -> tuple[bool, int]:
+    db = load_db()
+    user_str = str(user_id)
+    current = normalize_user_record(db.get(user_str))
+
+    free_left = current.get("free_requests", 0)
+    paid_left = current.get("requests_balance", 0)
+
+    if free_left > 0:
+        free_left -= 1
+    elif paid_left > 0:
+        paid_left -= 1
+    else:
+        return False, 0
+
+    current["free_requests"] = free_left
+    current["requests_balance"] = paid_left
+    db[user_str] = current
+    save_db(db)
+    return True, max(0, free_left) + max(0, paid_left)
+
+
+def append_messages_footer(reply_text: str, left_count: int, lang: str) -> str:
+    if lang == "en":
+        footer = f"\n\nОсталось сообщений: <b>{left_count}</b>" if False else f"\n\nMessages left: <b>{left_count}</b>"
+    else:
+        footer = f"\n\nОсталось сообщений: <b>{left_count}</b>"
+    return f"{reply_text}{footer}"
 
 
 def get_history(user_id):
@@ -292,18 +342,13 @@ def get_history(user_id):
 def save_history(user_id, history):
     db = load_db()
     user_str = str(user_id)
-    current = get_user_record(user_id) or {}
+    current = normalize_user_record(db.get(user_str))
     clean = [
         msg for msg in history
         if isinstance(msg, dict) and msg.get("role") in ["user", "assistant"]
     ]
-    db[user_str] = {
-        "lang": current.get("lang", "ru"),
-        "mode": current.get("mode", DEFAULT_MODE),
-        "profile": current.get("profile", {}),
-        "requests_balance": current.get("requests_balance", 0),
-        "history": clean,
-    }
+    current["history"] = clean
+    db[user_str] = current
     save_db(db)
     print(f"💾 Память сохранена для {user_id}: всего сообщений -> {len(clean)}")
 
@@ -311,14 +356,9 @@ def save_history(user_id, history):
 def save_user_profile(user_id, profile_data: dict):
     db = load_db()
     user_str = str(user_id)
-    current = get_user_record(user_id) or {}
-    db[user_str] = {
-        "lang": current.get("lang", "ru"),
-        "mode": current.get("mode", DEFAULT_MODE),
-        "profile": profile_data,
-        "requests_balance": current.get("requests_balance", 0),
-        "history": current.get("history", []),
-    }
+    current = normalize_user_record(db.get(user_str))
+    current["profile"] = profile_data
+    db[user_str] = current
     save_db(db)
     print(f"🧬 Вечный профиль сохранён для {user_id}: {profile_data}")
 
@@ -326,22 +366,17 @@ def save_user_profile(user_id, profile_data: dict):
 def add_user_requests(user_id, amount: int) -> int:
     db = load_db()
     user_str = str(user_id)
-    current = get_user_record(user_id) or {}
+    current = normalize_user_record(db.get(user_str))
     new_balance = current.get("requests_balance", 0) + amount
-    db[user_str] = {
-        "lang": current.get("lang", "ru"),
-        "mode": current.get("mode", DEFAULT_MODE),
-        "profile": current.get("profile", {}),
-        "requests_balance": new_balance,
-        "history": current.get("history", []),
-    }
+    current["requests_balance"] = new_balance
+    db[user_str] = current
     save_db(db)
     print(f"🧾 Баланс запросов для {user_id} пополнен на +{amount}: теперь {new_balance}")
     return new_balance
 
 
 def get_user_lang(user_id):
-    return (get_user_record(user_id) or {}).get("lang", "ru")
+    return get_user_record(user_id).get("lang", "ru")
 
 
 def set_user_lang(user_id, lang):
@@ -349,20 +384,15 @@ def set_user_lang(user_id, lang):
         lang = "ru"
     db = load_db()
     user_str = str(user_id)
-    current = get_user_record(user_id) or {}
-    db[user_str] = {
-        "lang": lang,
-        "mode": current.get("mode", DEFAULT_MODE),
-        "profile": current.get("profile", {}),
-        "requests_balance": current.get("requests_balance", 0),
-        "history": current.get("history", []),
-    }
+    current = normalize_user_record(db.get(user_str))
+    current["lang"] = lang
+    db[user_str] = current
     save_db(db)
     print(f"🌐 Язык для {user_id} изменён на: {lang}")
 
 
 def get_user_mode(user_id):
-    return (get_user_record(user_id) or {}).get("mode", DEFAULT_MODE)
+    return get_user_record(user_id).get("mode", DEFAULT_MODE)
 
 
 def set_user_mode(user_id, mode):
@@ -370,14 +400,9 @@ def set_user_mode(user_id, mode):
         mode = DEFAULT_MODE
     db = load_db()
     user_str = str(user_id)
-    current = get_user_record(user_id) or {}
-    db[user_str] = {
-        "lang": current.get("lang", "ru"),
-        "mode": mode,
-        "profile": current.get("profile", {}),
-        "requests_balance": current.get("requests_balance", 0),
-        "history": current.get("history", []),
-    }
+    current = normalize_user_record(db.get(user_str))
+    current["mode"] = mode
+    db[user_str] = current
     save_db(db)
     print(f"🎭 Режим для {user_id} изменён на: {mode}")
 
@@ -393,11 +418,10 @@ def build_system_prompt(lang: str, mode: str = DEFAULT_MODE, profile: dict | Non
         effective_bot_name = bot_name if bot_name else "Gauter"
         base = (
             f"You are {effective_bot_name}, an older bro and real mentor. Keep it raw, grounded, and natural — "
-            "no cringey roleplay or stiff AI tone. Write thorough, punchy, conversational replies like "
-            "two real guys talking shop, training, mindset, and life. Always break long replies into "
-            "3-4 clean paragraphs so it reads easily. Use relevant emojis naturally where they fit "
-            "(fire, weights, skulls, rockets), and avoid markdown bullet lists, headers, or asterisks. "
-            "Always reply strictly in English."
+            "no cringey roleplay or stiff AI tone. STRUCTURE: write strictly 3 paragraphs of about 5-6 lines each, "
+            "plus 1 short takeaway/conclusion line at the very bottom (around 20 lines total so it reads cleanly on mobile "
+            "without dragging or cutting off). Use relevant emojis naturally where they fit (fire, weights, skulls, rockets), "
+            "and avoid markdown bullet lists, headers, or asterisks. Always reply strictly in English."
         )
         profile_lines = []
         if bot_name:
@@ -441,12 +465,12 @@ def build_system_prompt(lang: str, mode: str = DEFAULT_MODE, profile: dict | Non
     effective_bot_name = bot_name if bot_name else "Гаутер"
     base = (
         f"Ты — {effective_bot_name}, старший кореш и бро. Живой пацан, без шизы, ботов и ролевых игр. "
-        "ОБЩЕНИЕ КАК НАДО: Пиши максимально развернуто, объемно и сочно, в стиле живого разговора "
-        "двух реальных корешей. ОБЯЗАТЕЛЬНО разделяй текст на 3-4 аккуратных абзаца, чтобы он легко "
-        "читался и детально разбирал все темы. Насыпай к месту много живых эмодзи (огонь, дым, черепа, "
-        "бро, ракеты), чтобы они заменяли стикеры и создавали движ. Никаких сухих отписок, списков, "
-        "лекций, звездочек и решеток. Разбирай темы подробно, рассуждай, спорь и поддерживай "
-        "по-братски. Отвечай строго на русском языке."
+        "ОБЩЕНИЕ КАК НАДО: Пиши живо и по делу, в стиле разговора двух реальных корешей. "
+        "СТРУКТУРА ОТВЕТА: ОБЯЗАТЕЛЬНО делай ровно 3 абзаца примерно по 5-6 строк каждый, "
+        "а в самом конце добавляй 1 короткую строку-вывод по всему написанному (около 20 строк в сумме — "
+        "чтобы читалось легко с экрана телефона без простыней и обрывов на полуслове). "
+        "Насыпай к месту живые эмодзи (огонь, дым, черепа, бро, ракеты). "
+        "Никаких списков, заголовков, звездочек и решеток. Отвечай строго на русском языке."
     )
     profile_lines = []
     if bot_name:
@@ -486,23 +510,39 @@ def build_system_prompt(lang: str, mode: str = DEFAULT_MODE, profile: dict | Non
         ),
     }
     return base + profile_block + mode_focus.get(mode, mode_focus[DEFAULT_MODE])
-
-
-ACTIVE_MODEL = "openai/gpt-oss-120b"
+    ACTIVE_MODEL = "openai/gpt-oss-120b"
 VISION_MODEL = "qwen/qwen3.8-27b"
 print(f"Подключена модель: {ACTIVE_MODEL} | Vision: {VISION_MODEL}")
+
+
+def get_mode_selection_prompt(lang: str, user_name: str = "") -> str:
+    if lang == "en":
+        call_name = user_name if user_name else "bro"
+        return (
+            f"Almost there, {call_name}! 🎭 Pick the mode you want to start in:\n\n"
+            f"🤝 <b>Support</b> — calm backup, take the pressure off, talk things through\n"
+            f"😎 <b>Just bro</b> — chill real talk, life, training, banter\n"
+            f"🎯 <b>Mentor</b> — direct focus, discipline, clear next steps"
+        )
+    call_name = user_name if user_name else "бро"
+    return (
+        f"Почти всё, {call_name}! 🎭 Выбери режим, с которого начнём:\n\n"
+        f"🤝 <b>Поддержка</b> — выдохнуть, снять груз и поговорить без давления\n"
+        f"😎 <b>Просто бро</b> — живой базар за жизнь, движ и идеи на равных\n"
+        f"🎯 <b>Наставник</b> — жёсткий фокус, дисциплина и чёткие шаги по делу"
+    )
 
 
 def get_base_welcome_text(lang: str, mode_label: str, user_name: str = "") -> str:
     if lang == "en":
         call_name = user_name if user_name else "bro"
         return (
-            f"Yo, {call_name}! ❤️ Locked in. 🚀 Current mode: <b>{mode_label}</b>.\n"
+            f"Yo, {call_name}! ❤️ Locked in. 🚀 Active mode: <b>{mode_label}</b>.\n"
             f"What's good — tell me what's on your mind, training, or plans and let's break it down. 🔥"
         )
     call_name = user_name if user_name else "бро"
     return (
-        f"Здорова, {call_name}! ❤️ На связи. 🚀 Текущий режим: <b>{mode_label}</b>.\n"
+        f"Здорова, {call_name}! ❤️ На связи. 🚀 Выбран режим: <b>{mode_label}</b>.\n"
         f"Че как, рассказывай подробно, какие мысли в голове крутятся, давай перетрем за жизнь и планы. 🔥"
     )
 
@@ -548,9 +588,8 @@ async def process_start_lang_callback(callback: CallbackQuery, state: FSMContext
 @dp.callback_query(F.data == "survey_no")
 async def process_survey_no(callback: CallbackQuery, state: FSMContext):
     await state.clear()
-    rec = get_user_record(callback.from_user.id) or {}
+    rec = get_user_record(callback.from_user.id)
     lang = rec.get("lang", "ru")
-    mode_label = get_mode_label(rec.get("mode", DEFAULT_MODE), lang)
     user_name = (rec.get("profile") or {}).get("user_name", "")
 
     await callback.answer()
@@ -559,8 +598,11 @@ async def process_survey_no(callback: CallbackQuery, state: FSMContext):
     except Exception:
         pass
 
-    text = get_base_welcome_text(lang, mode_label, user_name)
-    await callback.message.answer(text, reply_markup=get_main_menu(lang), parse_mode="HTML")
+    await callback.message.answer(
+        get_mode_selection_prompt(lang, user_name),
+        reply_markup=POST_ONBOARDING_MODE_KEYBOARD,
+        parse_mode="HTML",
+    )
 
 
 @dp.callback_query(F.data == "survey_yes")
@@ -623,9 +665,7 @@ async def survey_step_interests(message: Message, state: FSMContext):
 @dp.message(OnboardingSurvey.problems, F.text)
 async def survey_step_problems(message: Message, state: FSMContext):
     user_id = message.from_user.id
-    rec = get_user_record(user_id) or {}
-    lang = rec.get("lang", "ru")
-    mode_label = get_mode_label(rec.get("mode", DEFAULT_MODE), lang)
+    lang = get_user_lang(user_id)
 
     data = await state.get_data()
     profile_data = {
@@ -638,26 +678,53 @@ async def survey_step_problems(message: Message, state: FSMContext):
     await state.clear()
 
     if lang == "en":
-        done_text = (
-            f"Got it, <b>{profile_data['user_name']}</b>! 🧬🔥\n\n"
-            f"I'll keep this profile in memory forever (even after resetting chat history), "
-            f"call you by your name naturally, and only bring up hobbies or problems when relevant or when you ask. "
-            f"Current mode: <b>{mode_label}</b>. What's good?"
+        saved_note = (
+            f"Got it, <b>{profile_data['user_name']}</b>! 🧬🔥\n"
+            f"I've locked your profile in memory — I'll bring up details only when relevant or when you ask."
         )
     else:
-        done_text = (
-            f"Принято, <b>{profile_data['user_name']}</b>! 🧬🔥\n\n"
-            f"Записал это в память навеки — даже при сбросе истории чата ничего не сотру. "
-            f"Имя буду подхватывать естественно, а увлечения и проблемы буду поднимать только по делу или когда сам спросишь. "
-            f"Текущий режим: <b>{mode_label}</b>. Че как, погнали?"
+        saved_note = (
+            f"Принято, <b>{profile_data['user_name']}</b>! 🧬🔥\n"
+            f"Сохранил твою анкету в памяти навеки — буду поднимать детали только по делу или когда сам спросишь."
         )
-    await message.answer(done_text, reply_markup=get_main_menu(lang), parse_mode="HTML")
+    await message.answer(saved_note, parse_mode="HTML")
+    await message.answer(
+        get_mode_selection_prompt(lang, profile_data["user_name"]),
+        reply_markup=POST_ONBOARDING_MODE_KEYBOARD,
+        parse_mode="HTML",
+    )
+
+
+@dp.callback_query(F.data.in_({"onboard_mode_support", "onboard_mode_bro", "onboard_mode_mentor"}))
+async def process_onboard_mode_callback(callback: CallbackQuery):
+    mode_map = {
+        "onboard_mode_support": "support",
+        "onboard_mode_bro": "bro",
+        "onboard_mode_mentor": "mentor",
+    }
+    selected_mode = mode_map[callback.data]
+    user_id = callback.from_user.id
+    set_user_mode(user_id, selected_mode)
+
+    rec = get_user_record(user_id)
+    lang = rec.get("lang", "ru")
+    user_name = (rec.get("profile") or {}).get("user_name", "")
+    mode_label = get_mode_label(selected_mode, lang)
+
+    await callback.answer(mode_label)
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+
+    welcome_text = get_base_welcome_text(lang, mode_label, user_name)
+    await callback.message.answer(welcome_text, reply_markup=get_main_menu(lang), parse_mode="HTML")
 
 
 @dp.message(F.text.in_({"/profile", "🧬 Анкета", "🧬 Profile"}))
 async def cmd_profile(message: Message, state: FSMContext):
     await state.clear()
-    rec = get_user_record(message.from_user.id) or {}
+    rec = get_user_record(message.from_user.id)
     lang = rec.get("lang", "ru")
     profile = rec.get("profile") or {}
 
@@ -703,7 +770,7 @@ async def cmd_profile(message: Message, state: FSMContext):
 @dp.message(F.text.in_({"/reset", "🧹 Сброс", "🧹 Reset"}))
 async def cmd_reset(message: Message, state: FSMContext):
     await state.clear()
-    rec = get_user_record(message.from_user.id) or {}
+    rec = get_user_record(message.from_user.id)
     lang = rec.get("lang", "ru")
     user_name = (rec.get("profile") or {}).get("user_name", "")
     save_history(message.from_user.id, [])
@@ -730,7 +797,7 @@ async def cmd_lang(message: Message):
 
 @dp.message(F.text.in_({"/mode", "🎭 Режимы", "🎭 Modes"}))
 async def cmd_mode(message: Message):
-    rec = get_user_record(message.from_user.id) or {}
+    rec = get_user_record(message.from_user.id)
     lang = rec.get("lang", "ru")
     current_mode_label = get_mode_label(rec.get("mode", DEFAULT_MODE), lang)
     if lang == "en":
@@ -749,12 +816,12 @@ async def cmd_mode(message: Message):
 @dp.message(F.text.in_({"/info", "⚡️ Инфо", "⚡️ Info"}))
 async def cmd_info(message: Message):
     user_id = message.from_user.id
-    rec = get_user_record(user_id) or {}
+    rec = get_user_record(user_id)
     lang = rec.get("lang", "ru")
     mode = rec.get("mode", DEFAULT_MODE)
     history = rec.get("history", [])
     profile = rec.get("profile") or {}
-    requests_balance = rec.get("requests_balance", 0)
+    messages_left = get_total_messages_left(rec)
     lang_label = "English 🇬🇧" if lang == "en" else "Русский 🇷🇺"
     mode_label = get_mode_label(mode, lang)
     msg_count = len(history)
@@ -765,7 +832,7 @@ async def cmd_info(message: Message):
             f"Language: <b>{lang_label}</b>\n"
             f"Mode: <b>{mode_label}</b>\n"
             f"Profile memory: <b>{profile_status}</b>\n"
-            f"Paid requests balance: <b>{requests_balance} 🧾</b>\n"
+            f"Messages left: <b>{messages_left}</b>\n"
             f"Saved messages in memory: <b>{msg_count}/{MAX_HISTORY}</b>"
         )
     else:
@@ -775,7 +842,7 @@ async def cmd_info(message: Message):
             f"Язык: <b>{lang_label}</b>\n"
             f"Режим: <b>{mode_label}</b>\n"
             f"Анкета в памяти: <b>{profile_status}</b>\n"
-            f"Баланс запросов: <b>{requests_balance} 🧾</b>\n"
+            f"Осталось сообщений: <b>{messages_left}</b>\n"
             f"Сообщений в памяти: <b>{msg_count}/{MAX_HISTORY}</b>"
         )
     await message.answer(text, reply_markup=get_main_menu(lang), parse_mode="HTML")
@@ -783,13 +850,20 @@ async def cmd_info(message: Message):
 
 @dp.message(F.text.in_({"💳 Запросы", "💳 Requests"}))
 async def cmd_buy_requests(message: Message):
-    lang = get_user_lang(message.from_user.id)
-    text = (
-        "⭐️ Выбери пакет запросов в Telegram Stars:"
-        if lang == "ru"
-        else "⭐️ Choose a request pack in Telegram Stars:"
-    )
-    await message.answer(text, reply_markup=BUY_REQUESTS_KEYBOARD)
+    rec = get_user_record(message.from_user.id)
+    lang = rec.get("lang", "ru")
+    messages_left = get_total_messages_left(rec)
+    if lang == "en":
+        text = (
+            f"Messages left: <b>{messages_left}</b>\n"
+            f"⭐️ Choose a request pack in Telegram Stars:"
+        )
+    else:
+        text = (
+            f"Осталось сообщений: <b>{messages_left}</b>\n"
+            f"⭐️ Выбери пакет запросов в Telegram Stars:"
+        )
+    await message.answer(text, reply_markup=BUY_REQUESTS_KEYBOARD, parse_mode="HTML")
 
 
 @dp.callback_query(F.data.in_({"buy_100", "buy_200", "buy_500"}))
@@ -831,20 +905,21 @@ async def process_successful_payment(message: Message):
     lang = get_user_lang(user_id)
 
     new_balance = add_user_requests(user_id, added_requests)
+    messages_left = get_total_messages_left(get_user_record(user_id))
     print(
         f"💰 Оплата Stars от {user_id}: +{added_requests} запросов "
-        f"(баланс: {new_balance}) | ID: {payment.telegram_payment_charge_id}"
+        f"(платный баланс: {new_balance}, всего доступно: {messages_left}) | ID: {payment.telegram_payment_charge_id}"
     )
 
     if lang == "en":
         text = (
             f"Payment received! ⭐️🔥 Added <b>+{added_requests} requests</b>.\n"
-            f"Current balance: <b>{new_balance} 🧾</b>"
+            f"Messages left: <b>{messages_left}</b>"
         )
     else:
         text = (
             f"Оплата прошла! ⭐️🔥 Начислил <b>+{added_requests} запросов</b>.\n"
-            f"Текущий баланс: <b>{new_balance} 🧾</b>"
+            f"Осталось сообщений: <b>{messages_left}</b>"
         )
     await message.answer(text, reply_markup=get_main_menu(lang), parse_mode="HTML")
 
@@ -892,11 +967,21 @@ async def process_mode_callback(callback: CallbackQuery):
 @dp.message(F.photo)
 async def chat_with_photo(message: Message):
     user_id = message.from_user.id
-    rec = get_user_record(user_id) or {}
+    rec = get_user_record(user_id)
     lang = rec.get("lang", "ru")
     mode = rec.get("mode", DEFAULT_MODE)
     profile = rec.get("profile", {})
     history = list(rec.get("history", []))
+
+    allowed, left_after = consume_one_message(user_id)
+    if not allowed:
+        no_req_text = (
+            "Сообщения закончились! Выбери пакет в звёздах, чтобы продолжить:"
+            if lang == "ru"
+            else "You're out of messages! Pick a Star pack to keep going:"
+        )
+        await message.answer(no_req_text, reply_markup=BUY_REQUESTS_KEYBOARD)
+        return
 
     await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
     try:
@@ -934,9 +1019,9 @@ async def chat_with_photo(message: Message):
             model=VISION_MODEL,
             messages=vision_messages,
             temperature=0.5,
-            max_tokens=750,
+            max_tokens=850,
         )
-        reply = response.choices[0].message.content
+        reply = response.choices[0].message.content or ""
 
         history_note = f"[Фото: {caption}]" if caption else "[Фото без подписи]"
         history.append({"role": "user", "content": history_note})
@@ -944,7 +1029,8 @@ async def chat_with_photo(message: Message):
         history = history[-MAX_HISTORY:]
         save_history(user_id, history)
 
-        await message.answer(reply, reply_markup=get_main_menu(lang))
+        final_reply = append_messages_footer(reply, left_after, lang)
+        await message.answer(final_reply, reply_markup=get_main_menu(lang), parse_mode="HTML")
     except Exception as e:
         await message.answer(f"Ошибка при разборе фото: {e}", reply_markup=get_main_menu(lang))
 
@@ -952,11 +1038,21 @@ async def chat_with_photo(message: Message):
 @dp.message(F.text)
 async def chat_with_ai(message: Message):
     user_id = message.from_user.id
-    rec = get_user_record(user_id) or {}
+    rec = get_user_record(user_id)
     lang = rec.get("lang", "ru")
     mode = rec.get("mode", DEFAULT_MODE)
     profile = rec.get("profile", {})
     history = list(rec.get("history", []))
+
+    allowed, left_after = consume_one_message(user_id)
+    if not allowed:
+        no_req_text = (
+            "Сообщения закончились! Выбери пакет в звёздах, чтобы продолжить:"
+            if lang == "ru"
+            else "You're out of messages! Pick a Star pack to keep going:"
+        )
+        await message.answer(no_req_text, reply_markup=BUY_REQUESTS_KEYBOARD)
+        return
 
     history.append({"role": "user", "content": message.text})
     history = history[-MAX_HISTORY:]
@@ -969,15 +1065,16 @@ async def chat_with_ai(message: Message):
             model=ACTIVE_MODEL,
             messages=messages_payload,
             temperature=0.5,
-            max_tokens=750,
+            max_tokens=850,
         )
-        reply = response.choices[0].message.content
+        reply = response.choices[0].message.content or ""
 
         history.append({"role": "assistant", "content": reply})
         history = history[-MAX_HISTORY:]
         save_history(user_id, history)
 
-        await message.answer(reply, reply_markup=get_main_menu(lang))
+        final_reply = append_messages_footer(reply, left_after, lang)
+        await message.answer(final_reply, reply_markup=get_main_menu(lang), parse_mode="HTML")
     except Exception as e:
         await message.answer(f"Ошибка: {e}", reply_markup=get_main_menu(lang))
 
@@ -991,6 +1088,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-
-
