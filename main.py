@@ -511,8 +511,8 @@ def build_system_prompt(lang: str, mode: str = DEFAULT_MODE, profile: dict | Non
     }
     return base + profile_block + mode_focus.get(mode, mode_focus[DEFAULT_MODE])
     ACTIVE_MODEL = "openai/gpt-oss-120b"
-VISION_MODEL = "qwen/qwen3.8-27b"
-print(f"Подключена модель: {ACTIVE_MODEL} | Vision: {VISION_MODEL}")
+    VISION_MODEL = "qwen/qwen3.8-27b"
+    print(f"Подключена модель: {ACTIVE_MODEL} | Vision: {VISION_MODEL}")
 
 
 def get_mode_selection_prompt(lang: str, user_name: str = "") -> str:
