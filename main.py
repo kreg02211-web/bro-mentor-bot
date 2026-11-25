@@ -324,7 +324,7 @@ def consume_one_message(user_id) -> tuple[bool, int]:
 
 def append_messages_footer(reply_text: str, left_count: int, lang: str) -> str:
     if lang == "en":
-        footer = f"\n\nОсталось сообщений: <b>{left_count}</b>" if False else f"\n\nMessages left: <b>{left_count}</b>"
+        footer = f"\n\nMessages left: <b>{left_count}</b>"
     else:
         footer = f"\n\nОсталось сообщений: <b>{left_count}</b>"
     return f"{reply_text}{footer}"
@@ -405,9 +405,7 @@ def set_user_mode(user_id, mode):
     db[user_str] = current
     save_db(db)
     print(f"🎭 Режим для {user_id} изменён на: {mode}")
-
-
-def build_system_prompt(lang: str, mode: str = DEFAULT_MODE, profile: dict | None = None) -> str:
+    def build_system_prompt(lang: str, mode: str = DEFAULT_MODE, profile: dict | None = None) -> str:
     profile = profile or {}
     user_name = profile.get("user_name", "").strip()
     bot_name = profile.get("bot_name", "").strip()
@@ -419,11 +417,11 @@ def build_system_prompt(lang: str, mode: str = DEFAULT_MODE, profile: dict | Non
         base = (
             f"You are {effective_bot_name}, an older bro and real mentor. Keep it raw, grounded, and natural — "
             "no cringey roleplay or stiff AI tone. STRUCTURE: write strictly 3 paragraphs of about 5-6 lines each, "
-            "and at the very bottom add 1 short closing line like a natural side note or punchline — NEVER write words like "
-            "'Conclusion', 'Summary', 'Takeaway', or 'TL;DR', and NEVER use asterisks (**) or markdown formatting. "
-            "For example, after breaking down a topic, just drop a natural line like 'Either way bro, don't sweat it, "
-            "keep doing the work and it'll click.' Use relevant emojis naturally where they fit (fire, weights, skulls, rockets), "
-            "and avoid lists or headers. Always reply strictly in English."
+            "and at the very bottom add 1 short natural closing side-note line tailored strictly to the specific topic "
+            "of the current conversation — NEVER repeat a canned phrase, NEVER write words like 'Conclusion', 'Summary', "
+            "'Takeaway', or 'TL;DR', and NEVER use asterisks (**) or markdown formatting. "
+            "Use relevant emojis naturally where they fit (fire, weights, skulls, rockets), and avoid lists or headers. "
+            "Always reply strictly in English."
         )
         profile_lines = []
         if bot_name:
@@ -469,10 +467,9 @@ def build_system_prompt(lang: str, mode: str = DEFAULT_MODE, profile: dict | Non
         f"Ты — {effective_bot_name}, старший кореш и бро. Живой пацан, без шизы, ботов и ролевых игр. "
         "ОБЩЕНИЕ КАК НАДО: Пиши живо и по делу, в стиле разговора двух реальных корешей. "
         "СТРУКТУРА ОТВЕТА: ОБЯЗАТЕЛЬНО делай ровно 3 абзаца примерно по 5-6 строк каждый, "
-        "а в самом конце добавляй 1 короткую живую строку-сноску от себя — НИКОГДА не пиши слова 'Вывод', "
-        "'Итог', 'Резюме' или похожие ярлыки и НИКОГДА не используй звёздочки (**). "
-        "Просто дай живую добивку по теме разговора, как в примере: разобрал вопрос и снизу просто написал "
-        "'А так, бро, не парься — всё гуд, просто делай, что делал, и вес поползёт'. "
+        "а в самом конце добавляй 1 короткую живую строку-сноску строго по контексту текущего разговора — "
+        "каждый раз уникальную и по теме того, что только что обсуждали. "
+        "НИКОГДА не пиши слова 'Вывод', 'Итог', 'Резюме' или похожие ярлыки, и НИКОГДА не используй звёздочки (**). "
         "Насыпай к месту живые эмодзи (огонь, дым, черепа, бро, ракеты). "
         "Никаких списков, заголовков, звёздочек и решёток. Отвечай строго на русском языке."
     )
@@ -514,7 +511,7 @@ def build_system_prompt(lang: str, mode: str = DEFAULT_MODE, profile: dict | Non
         ),
     }
     return base + profile_block + mode_focus.get(mode, mode_focus[DEFAULT_MODE])
-        
+
 
 ACTIVE_MODEL = "openai/gpt-oss-120b"
 VISION_MODEL = "qwen/qwen3.8-27b"
@@ -548,7 +545,7 @@ def get_base_welcome_text(lang: str, mode_label: str, user_name: str = "") -> st
         )
     call_name = user_name if user_name else "бро"
     return (
-        f"Здорова, {call_name}! ❤️ На связи Mentor. 🚀 Выбран режим: <b>{mode_label}</b>.\n"
+        f"Здорова, {call_name}! ❤️ На связи. 🚀 Выбран режим: <b>{mode_label}</b>.\n"
         f"Че как, рассказывай подробно, какие мысли в голове крутятся, давай перетрем за жизнь и планы. 🔥"
     )
 
@@ -725,9 +722,7 @@ async def process_onboard_mode_callback(callback: CallbackQuery):
 
     welcome_text = get_base_welcome_text(lang, mode_label, user_name)
     await callback.message.answer(welcome_text, reply_markup=get_main_menu(lang), parse_mode="HTML")
-
-
-@dp.message(F.text.in_({"/profile", "🧬 Анкета", "🧬 Profile"}))
+    @dp.message(F.text.in_({"/profile", "🧬 Анкета", "🧬 Profile"}))
 async def cmd_profile(message: Message, state: FSMContext):
     await state.clear()
     rec = get_user_record(message.from_user.id)
