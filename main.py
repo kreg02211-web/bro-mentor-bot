@@ -406,11 +406,11 @@ def set_user_mode(user_id, mode):
     save_db(db)
     print(f"🎭 Режим для {user_id} изменён на: {mode}")
     def build_system_prompt(lang: str, mode: str = DEFAULT_MODE, profile: dict | None = None) -> str:
-    profile = profile or {}
-    user_name = profile.get("user_name", "").strip()
-    bot_name = profile.get("bot_name", "").strip()
-    interests = profile.get("interests", "").strip()
-    problems = profile.get("problems", "").strip()
+        profile = profile or {}
+        user_name = profile.get("user_name", "").strip()
+        bot_name = profile.get("bot_name", "").strip()
+        interests = profile.get("interests", "").strip()
+        problems = profile.get("problems", "").strip()
 
     if lang == "en":
         effective_bot_name = bot_name if bot_name else "Gauter"
