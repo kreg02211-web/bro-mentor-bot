@@ -722,7 +722,9 @@ async def process_onboard_mode_callback(callback: CallbackQuery):
 
     welcome_text = get_base_welcome_text(lang, mode_label, user_name)
     await callback.message.answer(welcome_text, reply_markup=get_main_menu(lang), parse_mode="HTML")
-    @dp.message(F.text.in_({"/profile", "🧬 Анкета", "🧬 Profile"}))
+
+
+@dp.message(F.text.in_({"/profile", "🧬 Анкета", "🧬 Profile"}))
 async def cmd_profile(message: Message, state: FSMContext):
     await state.clear()
     rec = get_user_record(message.from_user.id)
@@ -737,7 +739,6 @@ async def cmd_profile(message: Message, state: FSMContext):
         )
         await message.answer(text, reply_markup=get_survey_offer_keyboard(lang))
         return
-
     retake_kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [
