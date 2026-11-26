@@ -724,10 +724,10 @@ async def process_onboard_mode_callback(callback: CallbackQuery):
     await callback.message.answer(welcome_text, reply_markup=get_main_menu(lang), parse_mode="HTML")
     @dp.message(F.text.in_({"/profile", "🧬 Анкета", "🧬 Profile"}))
 async def cmd_profile(message: Message, state: FSMContext):
-        await state.clear()
-    rec = get_user_record(message.from_user.id)
-    lang = rec.get("lang", "ru")
-    profile = rec.get("profile") or {}
+    await state.clear()
+        rec = get_user_record(message.from_user.id)
+        lang = rec.get("lang", "ru")
+        profile = rec.get("profile") or {}
 
     if not profile:
         text = (
