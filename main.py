@@ -904,7 +904,7 @@ async def process_channel_continue_callback(callback: CallbackQuery):
     welcome_text = get_base_welcome_text(lang, mode_label, user_name)
     await callback.message.answer(welcome_text, reply_markup=get_main_menu(lang), parse_mode="HTML")
     async def _send_profile_card(message: Message, state: FSMContext):
-        await state.clear()
+    await state.clear()
     rec = get_user_record(message.from_user.id)
     lang = rec.get("lang", "ru")
     profile = rec.get("profile") or {}
@@ -948,7 +948,22 @@ async def process_channel_continue_callback(callback: CallbackQuery):
     await message.answer(text, reply_markup=retake_kb, parse_mode="HTML")
 
 
-@dp.message(F.text.in_({"/profile", "🧬 Анкета", "🧬 Profile"}))
+def _is_profile_trigger(text: str | None) -> bool:
+    if not text:
+        return False
+    normalized = " ".join(text.replace("\ufe0f", "").strip().lower().split())
+    return normalized in {
+        "/profile",
+        "🧬 анкета",
+        "🧬 profile",
+        "🧬 профиль",
+        "анкета",
+        "profile",
+        "профиль",
+    }
+
+
+@dp.message(F.text.func(_is_profile_trigger))
 async def cmd_profile(message: Message, state: FSMContext):
     await _send_profile_card(message, state)
 
@@ -1223,8 +1238,7 @@ async def chat_with_photo(message: Message):
 
 @dp.message(F.text)
 async def chat_with_ai(message: Message, state: FSMContext):
-    cleaned_text = (message.text or "").strip().lower()
-    if cleaned_text in {"🧬 анкета", "🧬 profile", "/profile", "анкета", "profile"}:
+    if _is_profile_trigger(message.text):
         await _send_profile_card(message, state)
         return
 
@@ -1279,3 +1293,5 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+   
+  
