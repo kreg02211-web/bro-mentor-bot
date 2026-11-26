@@ -233,7 +233,7 @@ def get_mode_label(mode: str, lang: str) -> str:
     }
     lang_map = labels["en"] if lang == "en" else labels["ru"]
     return lang_map.get(mode, lang_map[DEFAULT_MODE])
-    def get_today_str() -> str:
+def get_today_str() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
