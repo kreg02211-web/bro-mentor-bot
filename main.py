@@ -965,8 +965,8 @@ def _is_profile_trigger(text: str | None) -> bool:
 
 @dp.message(F.text.func(_is_profile_trigger))
 async def cmd_profile(message: Message, state: FSMContext):
+    print("🔥 НАЖАТА КНОПКА АНКЕТЫ:", repr(message.text))
     await _send_profile_card(message, state)
-
 @dp.message(F.text.in_({"/reset", "🧹 Сброс", "🧹 Reset"}))
 async def cmd_reset(message: Message, state: FSMContext):
     await state.clear()
