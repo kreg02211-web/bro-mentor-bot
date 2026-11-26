@@ -4,6 +4,7 @@ import json
 import base64
 import asyncio
 import threading
+from datetime import datetime, timezone
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from aiogram import Bot, Dispatcher, F
 from aiogram.fsm.context import FSMContext
@@ -57,7 +58,8 @@ groq_client = Groq(api_key=GROQ_API_KEY)
 
 MAX_HISTORY = 40
 DB_FILE = "chat_memory.json"
-FREE_REQUESTS = 10
+WELCOME_REQUESTS = 20
+DAILY_REQUESTS = 5
 
 VALID_MODES = ("support", "bro", "mentor")
 DEFAULT_MODE = "bro"
@@ -66,7 +68,6 @@ STAR_PACKS = {
     "buy_100": {"requests": 100, "stars": 150, "label": "100 запросов — 150 ⭐️"},
     "buy_200": {"requests": 200, "stars": 250, "label": "200 запросов — 250 ⭐️"},
     "buy_500": {"requests": 500, "stars": 500, "label": "500 запросов — 500 ⭐️"},
-    "buy_1000": {"requests": 1000, "stars": 1, "label": "1000 запросов — 1 ⭐️"},
 }
 
 
@@ -126,7 +127,6 @@ BUY_REQUESTS_KEYBOARD = InlineKeyboardMarkup(
         [InlineKeyboardButton(text="100 🧾 — 150 ⭐️", callback_data="buy_100")],
         [InlineKeyboardButton(text="200 🧾 — 250 ⭐️", callback_data="buy_200")],
         [InlineKeyboardButton(text="500 🧾 — 500 ⭐️", callback_data="buy_500")],
-        [InlineKeyboardButton(text="1000 🧾 — 1 ⭐️", callback_data="buy_1000")],
     ]
 )
 
@@ -216,6 +216,10 @@ def get_mode_label(mode: str, lang: str) -> str:
     }
     lang_map = labels["en"] if lang == "en" else labels["ru"]
     return lang_map.get(mode, lang_map[DEFAULT_MODE])
+    def get_today_str() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
 def load_db():
     if os.path.exists(DB_FILE):
         try:
@@ -236,20 +240,68 @@ def save_db(data):
         print(f"❌ Ошибка записи файла памяти: {e}")
 
 
+def sync_daily_quota(record: dict, today_str: str | None = None) -> tuple[dict, bool]:
+    today = today_str or get_today_str()
+    changed = False
+
+    welcome_left = record.get("welcome_requests", 0)
+    if not isinstance(welcome_left, int) or welcome_left < 0:
+        welcome_left = 0
+        changed = True
+
+    welcome_given = bool(record.get("welcome_bonus_given", False))
+    if welcome_left > 0 and not welcome_given:
+        welcome_given = True
+        changed = True
+
+    daily_left = record.get("daily_requests", 0)
+    if not isinstance(daily_left, int) or daily_left < 0:
+        daily_left = 0
+        changed = True
+
+    last_daily_date = record.get("last_daily_date")
+    if not isinstance(last_daily_date, str) or not last_daily_date:
+        last_daily_date = None
+
+    # Дневной лимит (5 на день) включается только после того, как потрачены все 20 стартовых бонусных запросов
+    if welcome_left == 0 and welcome_given:
+        if last_daily_date is None:
+            daily_left = DAILY_REQUESTS
+            last_daily_date = today
+            changed = True
+        elif last_daily_date != today:
+            daily_left = DAILY_REQUESTS
+            last_daily_date = today
+            changed = True
+
+    record["welcome_bonus_given"] = welcome_given
+    record["welcome_requests"] = welcome_left
+    record["daily_requests"] = daily_left
+    record["last_daily_date"] = last_daily_date
+    return record, changed
+
+
 def normalize_user_record(raw):
+    today = get_today_str()
+
     if isinstance(raw, list):
         clean = [
             msg for msg in raw
             if isinstance(msg, dict) and msg.get("role") in ["user", "assistant"]
         ]
-        return {
+        rec = {
             "lang": "ru",
             "mode": DEFAULT_MODE,
             "profile": {},
-            "free_requests": FREE_REQUESTS,
+            "welcome_bonus_given": True,
+            "welcome_requests": WELCOME_REQUESTS,
+            "daily_requests": 0,
+            "last_daily_date": None,
             "requests_balance": 0,
             "history": clean,
         }
+        rec, _ = sync_daily_quota(rec, today)
+        return rec
 
     if isinstance(raw, dict):
         lang = raw.get("lang", "ru")
@@ -261,65 +313,131 @@ def normalize_user_record(raw):
         profile = raw.get("profile", {})
         if not isinstance(profile, dict):
             profile = {}
-        free_requests = raw.get("free_requests")
-        if not isinstance(free_requests, int):
-            free_requests = FREE_REQUESTS
+
+        welcome_requests = raw.get("welcome_requests")
+        if not isinstance(welcome_requests, int):
+            legacy_free = raw.get("free_requests")
+            if isinstance(legacy_free, int):
+                welcome_requests = max(0, legacy_free)
+            else:
+                welcome_requests = WELCOME_REQUESTS
+
+        welcome_bonus_given = raw.get("welcome_bonus_given")
+        if not isinstance(welcome_bonus_given, bool):
+            welcome_bonus_given = welcome_requests < WELCOME_REQUESTS or "free_requests" in raw
+
+        daily_requests = raw.get("daily_requests", 0)
+        if not isinstance(daily_requests, int):
+            daily_requests = 0
+
+        last_daily_date = raw.get("last_daily_date")
+        if not isinstance(last_daily_date, str) or not last_daily_date:
+            last_daily_date = None
+
         requests_balance = raw.get("requests_balance", 0)
         if not isinstance(requests_balance, int):
             requests_balance = 0
+
         hist = raw.get("history", [])
         clean = [
             msg for msg in hist
             if isinstance(msg, dict) and msg.get("role") in ["user", "assistant"]
         ]
-        return {
+
+        rec = {
             "lang": lang,
             "mode": mode,
             "profile": profile,
-            "free_requests": free_requests,
+            "welcome_bonus_given": welcome_bonus_given,
+            "welcome_requests": welcome_requests,
+            "daily_requests": daily_requests,
+            "last_daily_date": last_daily_date,
             "requests_balance": requests_balance,
             "history": clean,
         }
+        rec, _ = sync_daily_quota(rec, today)
+        return rec
 
-    return {
+    rec = {
         "lang": "ru",
         "mode": DEFAULT_MODE,
         "profile": {},
-        "free_requests": FREE_REQUESTS,
+        "welcome_bonus_given": True,
+        "welcome_requests": WELCOME_REQUESTS,
+        "daily_requests": 0,
+        "last_daily_date": None,
         "requests_balance": 0,
         "history": [],
     }
+    rec, _ = sync_daily_quota(rec, today)
+    return rec
 
 
 def get_user_record(user_id):
     db = load_db()
-    return normalize_user_record(db.get(str(user_id)))
+    user_str = str(user_id)
+    raw = db.get(user_str)
+    rec = normalize_user_record(raw)
+    synced, changed = sync_daily_quota(dict(rec), get_today_str())
+    if changed and isinstance(raw, dict):
+        db[user_str] = synced
+        save_db(db)
+    return synced
+
+
+def grant_first_start_bonus_if_needed(user_id) -> dict:
+    db = load_db()
+    user_str = str(user_id)
+    current = normalize_user_record(db.get(user_str))
+    if not current.get("welcome_bonus_given", False):
+        current["welcome_bonus_given"] = True
+        current["welcome_requests"] = WELCOME_REQUESTS
+        current["daily_requests"] = 0
+        current["last_daily_date"] = None
+    current, _ = sync_daily_quota(current, get_today_str())
+    db[user_str] = current
+    save_db(db)
+    return current
 
 
 def get_total_messages_left(rec: dict) -> int:
-    return max(0, rec.get("free_requests", 0)) + max(0, rec.get("requests_balance", 0))
+    welcome_left = max(0, rec.get("welcome_requests", 0))
+    daily_left = max(0, rec.get("daily_requests", 0))
+    paid_left = max(0, rec.get("requests_balance", 0))
+    if welcome_left > 0:
+        return welcome_left + paid_left
+    return daily_left + paid_left
 
 
 def consume_one_message(user_id) -> tuple[bool, int]:
     db = load_db()
     user_str = str(user_id)
     current = normalize_user_record(db.get(user_str))
+    current, _ = sync_daily_quota(current, get_today_str())
 
-    free_left = current.get("free_requests", 0)
+    welcome_left = current.get("welcome_requests", 0)
+    daily_left = current.get("daily_requests", 0)
     paid_left = current.get("requests_balance", 0)
 
-    if free_left > 0:
-        free_left -= 1
+    if welcome_left > 0:
+        welcome_left -= 1
+        if welcome_left == 0 and current.get("last_daily_date") is None:
+            current["last_daily_date"] = get_today_str()
+    elif daily_left > 0:
+        daily_left -= 1
     elif paid_left > 0:
         paid_left -= 1
     else:
+        db[user_str] = current
+        save_db(db)
         return False, 0
 
-    current["free_requests"] = free_left
+    current["welcome_requests"] = welcome_left
+    current["daily_requests"] = daily_left
     current["requests_balance"] = paid_left
     db[user_str] = current
     save_db(db)
-    return True, max(0, free_left) + max(0, paid_left)
+    return True, get_total_messages_left(current)
 
 
 def append_messages_footer(reply_text: str, left_count: int, lang: str) -> str:
@@ -405,7 +523,7 @@ def set_user_mode(user_id, mode):
     db[user_str] = current
     save_db(db)
     print(f"🎭 Режим для {user_id} изменён на: {mode}")
-def build_system_prompt(lang: str, mode: str = DEFAULT_MODE, profile: dict | None = None) -> str:
+    def build_system_prompt(lang: str, mode: str = DEFAULT_MODE, profile: dict | None = None) -> str:
     profile = profile or {}
     user_name = profile.get("user_name", "").strip()
     bot_name = profile.get("bot_name", "").strip()
@@ -553,6 +671,7 @@ def get_base_welcome_text(lang: str, mode_label: str, user_name: str = "") -> st
 @dp.message(F.text == "/start")
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
+    grant_first_start_bonus_if_needed(message.from_user.id)
     save_history(message.from_user.id, [])
     await message.answer(
         "🌐 Выбери язык / Choose language:",
@@ -723,11 +842,11 @@ async def process_onboard_mode_callback(callback: CallbackQuery):
     welcome_text = get_base_welcome_text(lang, mode_label, user_name)
     await callback.message.answer(welcome_text, reply_markup=get_main_menu(lang), parse_mode="HTML")
     @dp.message(F.text.in_({"/profile", "🧬 Анкета", "🧬 Profile"}))
-    async def cmd_profile(message: Message, state: FSMContext):
-        await state.clear()
-        rec = get_user_record(message.from_user.id)
-        lang = rec.get("lang", "ru")
-        profile = rec.get("profile") or {}
+async def cmd_profile(message: Message, state: FSMContext):
+    await state.clear()
+    rec = get_user_record(message.from_user.id)
+    lang = rec.get("lang", "ru")
+    profile = rec.get("profile") or {}
 
     if not profile:
         text = (
@@ -867,7 +986,7 @@ async def cmd_buy_requests(message: Message):
     await message.answer(text, reply_markup=BUY_REQUESTS_KEYBOARD, parse_mode="HTML")
 
 
-@dp.callback_query(F.data.in_({"buy_100", "buy_200", "buy_500", "buy_1000"}))
+@dp.callback_query(F.data.in_({"buy_100", "buy_200", "buy_500"}))
 async def process_buy_requests_callback(callback: CallbackQuery):
     lang = get_user_lang(callback.from_user.id)
     pack = STAR_PACKS[callback.data]
@@ -1089,3 +1208,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+    
