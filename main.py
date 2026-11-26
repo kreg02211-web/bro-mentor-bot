@@ -216,9 +216,9 @@ def get_mode_label(mode: str, lang: str) -> str:
     }
     lang_map = labels["en"] if lang == "en" else labels["ru"]
     return lang_map.get(mode, lang_map[DEFAULT_MODE])
-    def load_db():
+def load_db():
     if os.path.exists(DB_FILE):
-        try:
+    try:
             with open(DB_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 return data if isinstance(data, dict) else {}
