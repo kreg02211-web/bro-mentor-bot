@@ -66,6 +66,7 @@ STAR_PACKS = {
     "buy_100": {"requests": 100, "stars": 150, "label": "100 запросов — 150 ⭐️"},
     "buy_200": {"requests": 200, "stars": 250, "label": "200 запросов — 250 ⭐️"},
     "buy_500": {"requests": 500, "stars": 500, "label": "500 запросов — 500 ⭐️"},
+    "buy_1000": {"requests": 1000, "stars": 1, "label": "1000 запросов — 1 ⭐️"},
 }
 
 
@@ -125,6 +126,7 @@ BUY_REQUESTS_KEYBOARD = InlineKeyboardMarkup(
         [InlineKeyboardButton(text="100 🧾 — 150 ⭐️", callback_data="buy_100")],
         [InlineKeyboardButton(text="200 🧾 — 250 ⭐️", callback_data="buy_200")],
         [InlineKeyboardButton(text="500 🧾 — 500 ⭐️", callback_data="buy_500")],
+        [InlineKeyboardButton(text="1000 🧾 — 1 ⭐️", callback_data="buy_1000")],
     ]
 )
 
@@ -214,9 +216,7 @@ def get_mode_label(mode: str, lang: str) -> str:
     }
     lang_map = labels["en"] if lang == "en" else labels["ru"]
     return lang_map.get(mode, lang_map[DEFAULT_MODE])
-
-
-def load_db():
+    def load_db():
     if os.path.exists(DB_FILE):
         try:
             with open(DB_FILE, "r", encoding="utf-8") as f:
@@ -405,7 +405,7 @@ def set_user_mode(user_id, mode):
     db[user_str] = current
     save_db(db)
     print(f"🎭 Режим для {user_id} изменён на: {mode}")
-def build_system_prompt(lang: str, mode: str = DEFAULT_MODE, profile: dict | None = None) -> str:
+    def build_system_prompt(lang: str, mode: str = DEFAULT_MODE, profile: dict | None = None) -> str:
     profile = profile or {}
     user_name = profile.get("user_name", "").strip()
     bot_name = profile.get("bot_name", "").strip()
@@ -722,9 +722,7 @@ async def process_onboard_mode_callback(callback: CallbackQuery):
 
     welcome_text = get_base_welcome_text(lang, mode_label, user_name)
     await callback.message.answer(welcome_text, reply_markup=get_main_menu(lang), parse_mode="HTML")
-
-
-@dp.message(F.text.in_({"/profile", "🧬 Анкета", "🧬 Profile"}))
+    @dp.message(F.text.in_({"/profile", "🧬 Анкета", "🧬 Profile"}))
 async def cmd_profile(message: Message, state: FSMContext):
     await state.clear()
     rec = get_user_record(message.from_user.id)
@@ -739,6 +737,7 @@ async def cmd_profile(message: Message, state: FSMContext):
         )
         await message.answer(text, reply_markup=get_survey_offer_keyboard(lang))
         return
+
     retake_kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -868,7 +867,7 @@ async def cmd_buy_requests(message: Message):
     await message.answer(text, reply_markup=BUY_REQUESTS_KEYBOARD, parse_mode="HTML")
 
 
-@dp.callback_query(F.data.in_({"buy_100", "buy_200", "buy_500"}))
+@dp.callback_query(F.data.in_({"buy_100", "buy_200", "buy_500", "buy_1000"}))
 async def process_buy_requests_callback(callback: CallbackQuery):
     lang = get_user_lang(callback.from_user.id)
     pack = STAR_PACKS[callback.data]
