@@ -218,7 +218,7 @@ def get_mode_label(mode: str, lang: str) -> str:
     return lang_map.get(mode, lang_map[DEFAULT_MODE])
 def load_db():
     if os.path.exists(DB_FILE):
-    try:
+        try:
             with open(DB_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 return data if isinstance(data, dict) else {}
