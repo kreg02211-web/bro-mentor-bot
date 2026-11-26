@@ -405,7 +405,7 @@ def set_user_mode(user_id, mode):
     db[user_str] = current
     save_db(db)
     print(f"🎭 Режим для {user_id} изменён на: {mode}")
-    def build_system_prompt(lang: str, mode: str = DEFAULT_MODE, profile: dict | None = None) -> str:
+def build_system_prompt(lang: str, mode: str = DEFAULT_MODE, profile: dict | None = None) -> str:
     profile = profile or {}
     user_name = profile.get("user_name", "").strip()
     bot_name = profile.get("bot_name", "").strip()
