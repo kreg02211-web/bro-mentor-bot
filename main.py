@@ -967,7 +967,6 @@ def _is_profile_trigger(text: str | None) -> bool:
 async def cmd_profile(message: Message, state: FSMContext):
     await _send_profile_card(message, state)
 
-
 @dp.message(F.text.in_({"/reset", "🧹 Сброс", "🧹 Reset"}))
 async def cmd_reset(message: Message, state: FSMContext):
     await state.clear()
