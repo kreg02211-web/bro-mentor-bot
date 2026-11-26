@@ -107,21 +107,42 @@ LANG_KEYBOARD = InlineKeyboardMarkup(
     ]
 )
 
-MODE_KEYBOARD = InlineKeyboardMarkup(
-    inline_keyboard=[
-        [InlineKeyboardButton(text="🤝 Поддержка", callback_data="mode_support")],
-        [InlineKeyboardButton(text="😎 Просто бро", callback_data="mode_bro")],
-        [InlineKeyboardButton(text="🎯 Наставник", callback_data="mode_mentor")],
-    ]
-)
 
-POST_ONBOARDING_MODE_KEYBOARD = InlineKeyboardMarkup(
-    inline_keyboard=[
-        [InlineKeyboardButton(text="🤝 Поддержка", callback_data="onboard_mode_support")],
-        [InlineKeyboardButton(text="😎 Просто бро", callback_data="onboard_mode_bro")],
-        [InlineKeyboardButton(text="🎯 Наставник", callback_data="onboard_mode_mentor")],
-    ]
-)
+def get_mode_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    if lang == "en":
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="🤝 Support", callback_data="mode_support")],
+                [InlineKeyboardButton(text="😎 Just bro", callback_data="mode_bro")],
+                [InlineKeyboardButton(text="🎯 Mentor", callback_data="mode_mentor")],
+            ]
+        )
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🤝 Поддержка", callback_data="mode_support")],
+            [InlineKeyboardButton(text="😎 Просто бро", callback_data="mode_bro")],
+            [InlineKeyboardButton(text="🎯 Наставник", callback_data="mode_mentor")],
+        ]
+    )
+
+
+def get_post_onboarding_mode_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    if lang == "en":
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="🤝 Support", callback_data="onboard_mode_support")],
+                [InlineKeyboardButton(text="😎 Just bro", callback_data="onboard_mode_bro")],
+                [InlineKeyboardButton(text="🎯 Mentor", callback_data="onboard_mode_mentor")],
+            ]
+        )
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🤝 Поддержка", callback_data="onboard_mode_support")],
+            [InlineKeyboardButton(text="😎 Просто бро", callback_data="onboard_mode_bro")],
+            [InlineKeyboardButton(text="🎯 Наставник", callback_data="onboard_mode_mentor")],
+        ]
+    )
+
 
 BUY_REQUESTS_KEYBOARD = InlineKeyboardMarkup(
     inline_keyboard=[
@@ -233,7 +254,7 @@ def get_mode_label(mode: str, lang: str) -> str:
     }
     lang_map = labels["en"] if lang == "en" else labels["ru"]
     return lang_map.get(mode, lang_map[DEFAULT_MODE])
-def get_today_str() -> str:
+    def get_today_str() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
@@ -540,7 +561,7 @@ def set_user_mode(user_id, mode):
     db[user_str] = current
     save_db(db)
     print(f"🎭 Режим для {user_id} изменён на: {mode}")
-def build_system_prompt(lang: str, mode: str = DEFAULT_MODE, profile: dict | None = None) -> str:
+    def build_system_prompt(lang: str, mode: str = DEFAULT_MODE, profile: dict | None = None) -> str:
     profile = profile or {}
     user_name = profile.get("user_name", "").strip()
     bot_name = profile.get("bot_name", "").strip()
@@ -739,7 +760,7 @@ async def process_survey_no(callback: CallbackQuery, state: FSMContext):
 
     await callback.message.answer(
         get_mode_selection_prompt(lang, user_name),
-        reply_markup=POST_ONBOARDING_MODE_KEYBOARD,
+        reply_markup=get_post_onboarding_mode_keyboard(lang),
         parse_mode="HTML",
     )
 
@@ -829,7 +850,7 @@ async def survey_step_problems(message: Message, state: FSMContext):
     await message.answer(saved_note, parse_mode="HTML")
     await message.answer(
         get_mode_selection_prompt(lang, profile_data["user_name"]),
-        reply_markup=POST_ONBOARDING_MODE_KEYBOARD,
+        reply_markup=get_post_onboarding_mode_keyboard(lang),
         parse_mode="HTML",
     )
 
@@ -883,17 +904,17 @@ async def process_channel_continue_callback(callback: CallbackQuery):
     welcome_text = get_base_welcome_text(lang, mode_label, user_name)
     await callback.message.answer(welcome_text, reply_markup=get_main_menu(lang), parse_mode="HTML")
     @dp.message(F.text.in_({"/profile", "🧬 Анкета", "🧬 Profile"}))
-    async def cmd_profile(message: Message, state: FSMContext):
-        await state.clear()
+async def cmd_profile(message: Message, state: FSMContext):
+    await state.clear()
     rec = get_user_record(message.from_user.id)
     lang = rec.get("lang", "ru")
     profile = rec.get("profile") or {}
 
     if not profile:
         text = (
-            "Анкета ещё не заполнена. Хочешь пройти мини-опрос сейчас? 🎯"
+            "Анкета ещё не заполнена. Хочешь написать анкету сейчас? 🎯"
             if lang == "ru"
-            else "Profile isn't filled out yet. Wanna take the quick survey now? 🎯"
+            else "Profile isn't filled out yet. Wanna write your survey now? 🎯"
         )
         await message.answer(text, reply_markup=get_survey_offer_keyboard(lang))
         return
@@ -902,7 +923,7 @@ async def process_channel_continue_callback(callback: CallbackQuery):
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="🔄 Пройти заново" if lang == "ru" else "🔄 Retake survey",
+                    text="🔄 Написать анкету заново" if lang == "ru" else "🔄 Retake survey",
                     callback_data="survey_yes",
                 )
             ]
@@ -911,19 +932,19 @@ async def process_channel_continue_callback(callback: CallbackQuery):
 
     if lang == "en":
         text = (
-            f"<b>🧬 Your Saved Profile:</b>\n\n"
-            f"👤 Name: <b>{profile.get('user_name', '-')}</b>\n"
-            f"🤖 Bot name: <b>{profile.get('bot_name', '-')}</b>\n"
-            f"🚀 Interests: <b>{profile.get('interests', '-')}</b>\n"
-            f"🎯 Problems / Goals: <b>{profile.get('problems', '-')}</b>"
+            f"<b>🧬 Your Saved Survey:</b>\n\n"
+            f"👤 Name: <b>{profile.get('user_name') or '-'}</b>\n"
+            f"🤖 Bot name: <b>{profile.get('bot_name') or '-'}</b>\n"
+            f"🚀 Interests: <b>{profile.get('interests') or '-'}</b>\n"
+            f"🎯 Problems / Goals: <b>{profile.get('problems') or '-'}</b>"
         )
     else:
         text = (
             f"<b>🧬 Твоя анкета:</b>\n\n"
-            f"👤 Имя: <b>{profile.get('user_name', '-')}</b>\n"
-            f"🤖 Имя бота: <b>{profile.get('bot_name', '-')}</b>\n"
-            f"🚀 Увлечения: <b>{profile.get('interests', '-')}</b>\n"
-            f"🎯 Проблемы / Цели: <b>{profile.get('problems', '-')}</b>"
+            f"👤 Имя: <b>{profile.get('user_name') or '-'}</b>\n"
+            f"🤖 Имя бота: <b>{profile.get('bot_name') or '-'}</b>\n"
+            f"🚀 Увлечения: <b>{profile.get('interests') or '-'}</b>\n"
+            f"🎯 Проблемы / Цели: <b>{profile.get('problems') or '-'}</b>"
         )
     await message.answer(text, reply_markup=retake_kb, parse_mode="HTML")
 
@@ -971,7 +992,7 @@ async def cmd_mode(message: Message):
             f"Текущий режим: <b>{current_mode_label}</b>\n"
             f"Выбери, под каким углом будем общаться:"
         )
-    await message.answer(text, reply_markup=MODE_KEYBOARD, parse_mode="HTML")
+    await message.answer(text, reply_markup=get_mode_keyboard(lang), parse_mode="HTML")
 
 
 @dp.message(F.text.in_({"/info", "⚡️ Инфо", "⚡️ Info"}))
