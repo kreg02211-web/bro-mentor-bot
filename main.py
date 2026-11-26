@@ -60,6 +60,7 @@ MAX_HISTORY = 40
 DB_FILE = "chat_memory.json"
 WELCOME_REQUESTS = 20
 DAILY_REQUESTS = 5
+CHANNEL_URL = "https://t.me/bro_mentor_tg"
 
 VALID_MODES = ("support", "bro", "mentor")
 DEFAULT_MODE = "bro"
@@ -129,6 +130,22 @@ BUY_REQUESTS_KEYBOARD = InlineKeyboardMarkup(
         [InlineKeyboardButton(text="500 🧾 — 500 ⭐️", callback_data="buy_500")],
     ]
 )
+
+
+def get_channel_offer_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    if lang == "en":
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="📢 Join Bro Mentor Channel", url=CHANNEL_URL)],
+                [InlineKeyboardButton(text="🔥 Let's chat", callback_data="channel_continue")],
+            ]
+        )
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📢 Подписаться на канал", url=CHANNEL_URL)],
+            [InlineKeyboardButton(text="🔥 Погнали в чат", callback_data="channel_continue")],
+        ]
+    )
 
 
 def get_survey_offer_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
@@ -216,7 +233,7 @@ def get_mode_label(mode: str, lang: str) -> str:
     }
     lang_map = labels["en"] if lang == "en" else labels["ru"]
     return lang_map.get(mode, lang_map[DEFAULT_MODE])
-def get_today_str() -> str:
+    def get_today_str() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
@@ -523,7 +540,7 @@ def set_user_mode(user_id, mode):
     db[user_str] = current
     save_db(db)
     print(f"🎭 Режим для {user_id} изменён на: {mode}")
-def build_system_prompt(lang: str, mode: str = DEFAULT_MODE, profile: dict | None = None) -> str:
+    def build_system_prompt(lang: str, mode: str = DEFAULT_MODE, profile: dict | None = None) -> str:
     profile = profile or {}
     user_name = profile.get("user_name", "").strip()
     bot_name = profile.get("bot_name", "").strip()
@@ -828,12 +845,36 @@ async def process_onboard_mode_callback(callback: CallbackQuery):
     user_id = callback.from_user.id
     set_user_mode(user_id, selected_mode)
 
+    lang = get_user_lang(user_id)
+    await callback.answer()
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+
+    if lang == "en":
+        offer_text = (
+            "Mode locked in! 🔥 Before we jump into the chat, subscribe to the channel — "
+            "updates, drops, and real talk live there:\n"
+            f"{CHANNEL_URL}"
+        )
+    else:
+        offer_text = (
+            "Режим включил! 🔥 Перед стартом в чате залетай в канал — там обновы, движ и разборы по делу:\n"
+            f"{CHANNEL_URL}"
+        )
+    await callback.message.answer(offer_text, reply_markup=get_channel_offer_keyboard(lang))
+
+
+@dp.callback_query(F.data == "channel_continue")
+async def process_channel_continue_callback(callback: CallbackQuery):
+    user_id = callback.from_user.id
     rec = get_user_record(user_id)
     lang = rec.get("lang", "ru")
+    mode_label = get_mode_label(rec.get("mode", DEFAULT_MODE), lang)
     user_name = (rec.get("profile") or {}).get("user_name", "")
-    mode_label = get_mode_label(selected_mode, lang)
 
-    await callback.answer(mode_label)
+    await callback.answer()
     try:
         await callback.message.delete()
     except Exception:
@@ -842,11 +883,11 @@ async def process_onboard_mode_callback(callback: CallbackQuery):
     welcome_text = get_base_welcome_text(lang, mode_label, user_name)
     await callback.message.answer(welcome_text, reply_markup=get_main_menu(lang), parse_mode="HTML")
     @dp.message(F.text.in_({"/profile", "🧬 Анкета", "🧬 Profile"}))
-    async def cmd_profile(message: Message, state: FSMContext):
-        await state.clear()
-        rec = get_user_record(message.from_user.id)
-        lang = rec.get("lang", "ru")
-        profile = rec.get("profile") or {}
+async def cmd_profile(message: Message, state: FSMContext):
+    await state.clear()
+    rec = get_user_record(message.from_user.id)
+    lang = rec.get("lang", "ru")
+    profile = rec.get("profile") or {}
 
     if not profile:
         text = (
@@ -1208,4 +1249,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-    
